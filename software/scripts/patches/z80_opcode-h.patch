@@ -1,0 +1,10 @@
+--- external/F746_Gameboy/inc/z80_opcode.h	2018-04-24 08:21:00.000000000 +0200
++++ external/F746_Gameboy_git/inc/z80_opcode.h	2020-10-13 21:42:07.267592392 +0200
+@@ -7,7 +7,6 @@
+ 
+ #include "stm32f7xx.h"
+ #include "z80_ub.h"
+-#include "gameboy_ub.h"
+ #include "z80_opcode_table.h"
+ 
+ 

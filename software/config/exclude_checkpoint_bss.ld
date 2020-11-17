@@ -1,0 +1,13 @@
+/* Variables that have to be excluded from the .bss checkpoint */
+*(*.g_IOMhandles)
+*(*.g_am_hal_burst_mode_available)
+*(*.gAmHalCmdq)
+*(*.g_MSPIState)
+*(*.gAmHalResetStatus)
+*(*.g_bTxtXlate)
+*(*.g_pfnCharPrint)
+*(*.g_prfbuf)
+*(*.g_psMSPISettings)
+*(*.g_ADCSlotsConfigured)
+*(*.g_ADCState)
+*(*.priv_temp_trims)

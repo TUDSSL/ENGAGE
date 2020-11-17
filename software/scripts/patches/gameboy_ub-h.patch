@@ -1,0 +1,858 @@
+--- external/F746_Gameboy_source/inc/gameboy_ub.h	2018-04-28 11:22:28.000000000 +0200
++++ external/F746_Gameboy_git/inc/gameboy_ub.h	2020-10-13 21:42:07.267592392 +0200
+@@ -9,39 +9,23 @@
+ #include "stm32f7xx.h"
+ #include "stm32f7xx_hal.h"
+ #include "z80_ub.h"
++#include "gameboy_file.h"
++#include "display.h"
+ 
++#include "emulator_settings.h"
+ 
+ 
+ #define GB_EMULATOR_VERSION		"1.23"
+ #define GB_EMULATOR_DATE		"2018-04-28"
+ 
+-#define GB_INI_FILE			"gb_ub.ini"			// ini-file from sdcard
+-#define SBUFFER_SIZE		50					// dont change this value
+-
+-
+-// gb lcd position (pixel pos on screen)
+-#define GB_LCD_START_X		20	// minimum 16
+-#define GB_LCD_START_Y		0	// max 2
+-
+-// GUI color
+-#define GB_BGND_COLOR		0x7C7C			// color of background
+-#define GB_FONT_COLOR		RGB_COL_BLACK	// font color
+-#define GB_FONT_H_COLOR		RGB_COL_WHITE	// header font color
+-#define GB_LOAD_BG_COLOR	RGB_COL_WHITE	// color of load screen background
+-
+-
+-
+ // gb lcd startadr
+-#define LCD_LINE_LENGTH		(LCD_MAXX*2) // lenght of a lcd line in bytes
+-#define BG_START_ADR	(LCD_FRAME_BUFFER+LCD_FRAME_OFFSET)+(GB_LCD_START_Y*LCD_LINE_LENGTH)+(GB_LCD_START_X*2)
+-
+-// external sdram to load cartridge data
+-#define SDRAM_CARTRIDGE_START_ADR	(SDRAM_START_ADR + 0x00400000)
+-#define SDRAM_CARTRIDGE_SIZE		(1024 * 16 * 125)	// 125 Banks (each 16kByte)
+-
+-
++#define  LCD_MAXX           ((uint16_t)LINE_SIZE)      // Pixel in X-Richtung
++#define  LCD_MAXY           ((uint16_t)NUM_LINES)      // Pixel in Y-Richtung
++#define  LCD_PIXEL  LCD_MAXX*LCD_MAXY
+ 
++#define  LCD_FRAME_OFFSET   ((uint32_t)(LCD_PIXEL / 2)) // gr��e von einem Puffer (in Byte)
+ 
++#define LCD_LINE_LENGTH		(LCD_MAXX / 2) // lenght of a lcd line in bytes
+ 
+ // BACKGROUND_TILE_MAP (width=32 blocks x height=32 blocks = 1024 Blocks)
+ // each block is one byte which points to an index of the WINDOW_BACKGROUND_TILE_DATA
+@@ -213,20 +197,6 @@
+ 
+ 
+ //--------------------------------------------------------------
+-// Memory Controller defines
+-//--------------------------------------------------------------
+-#define SUPPORTED_MBC_VERSION	1		// [0=w/o MBC, 1=MBC1]
+-#define MBC0_INTERNAL_REGISTERS	0xFF00	// above this address are gameboy internal registers
+-#define MBC1_WR_RAM_EN			0x0000	// ram enable			[0x0000..0x1FFF]
+-#define MBC1_WR_BANK_LO			0x2000	// rom bank lo			[0x2000..0x3FFF]
+-#define MBC1_WR_BANK_HI			0x4000	// rom bank hi			[0x4000..0x5FFF]
+-#define MBC1_WR_MODE_SELECT		0x6000	// ram/rom mode select	[0x6000..0x7FFF]
+-#define MBC1_RD_BANKN			0x4000	// read bank [1..n]		[0x4000..0x7FFF]
+-#define MBC1_RD_BANK_SIZE		0x4000	// read bank size
+-
+-
+-
+-//--------------------------------------------------------------
+ // other
+ //-------------------------------------------------------------
+ 
+@@ -235,7 +205,7 @@
+ #define WIN_DX					7		// windows x_offset
+ 
+ #define INFO_UART_MSG			1		// set 1 to enable info msg
+-#define ERROR_UART_MSG			1		// set 1 to enable error msg
++#define ERROR_UART_MSG			0		// set 1 to enable error msg
+ 
+ 
+ //--------------------------------------------------------------
+@@ -287,21 +257,14 @@
+ //--------------------------------------------------------------
+ 
+ // color table (bright to dark)
+-static const uint16_t col_tables[8][4]={
+-{0xa71f,0x4dbf,0x2b7e,0x281f}, // 0 blue
+-{0xdd9f,0x9b7e,0x693f,0x4817}, // 1 purple
+-{0xfd9f,0xfb7f,0xd019,0x9010}, // 2 violet
+-{0xf517,0xf2b2,0xe02b,0xa065}, // 3 red
+-{0xff14,0xfd09,0xe303,0x80e1}, // 4 orange
+-{0xf6cf,0xf5c3,0xabe2,0x51a1}, // 5 brown
+-{0xd7ef,0xb7e4,0x05c0,0x03c0}, // 6 green
+-{0x2fdf,0x2f3a,0x1c30,0x120b}  // 7 blue2
++static const uint8_t col_tables[8][4]={
++{COLOR_LIGHT,COLOR_LIGHTGRAY,COLOR_GRAY,COLOR_BLACK}, // 0 standard
++{BG_COLOR_TRANSPARENT,BG_COLOR_LIGHTGRAY,BG_COLOR_GRAY,BG_COLOR_BLACK}, // 1 background
+ };
+ 
+ // default colors
+-#define DEFAULT_BG_COL_INDEX	4
+-#define DEFAULT_OBJ_COL_INDEX	6
+-
++#define DEFAULT_BG_COL_INDEX	1
++#define DEFAULT_OBJ_COL_INDEX	0
+ 
+ // helper table for bit0 in color table
+ static const uint8_t col_index_l[129]={
+@@ -404,8 +367,6 @@
+ 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,           // nc
+ 0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00};          // nc
+ 
+-
+-
+ typedef struct {
+ 	const uint8_t *tile_table;	// background tile table
+ 	uint16_t BGTM_start_adr;	// background tile map start adr
+@@ -414,8 +375,8 @@
+ 	uint8_t sprite_height;		// sprite height
+ 	uint8_t lcd_mode;			// used for lcd mode [0..3]
+ 	uint8_t lcdc_status;		// reoad only bit0..2 of register 0xFF41
+-	uint16_t bg_col_table[4];
+-	uint16_t obj_col_table[4][2];
++	uint8_t bg_col_table[4];
++	uint8_t obj_col_table[4][2];
+ 	uint32_t mcu_cycl_cnt;
+ 	uint32_t div_cycl_cnt;
+ 	uint8_t tim_enable; // timer
+@@ -423,7 +384,7 @@
+ 	uint32_t tim_cycl_ovf;
+ 	uint8_t px_cnt;
+ }Shadow_t;
+-Shadow_t Shadow;
++extern Shadow_t Shadow;
+ 
+ 
+ 
+@@ -499,14 +460,15 @@
+ 
+ 
+ // used for mem controller
++extern uint8_t memoryControllerType; // pulled this out to inline
++extern uint32_t memoryControllerBankOffset; // pulled this out to inline
++
+ typedef struct {
+ 	uint8_t logo_check;			// 0=ok, 1=error
+ 	char title[CARTRIDGE_TITLE_SIZE+1];
+-	uint8_t type;
+ 	uint8_t rom_size;
+ 	uint8_t ram_size;
+ 	uint8_t rom_bank_nr;
+-	uint32_t bank_offset;
+ 	uint8_t *sdram;		// pointer to external sdram for cartridge data
+ }MemCtrl_t;
+ 
+@@ -527,24 +489,8 @@
+ 	ERROR_MBC
+ }Error_t;
+ 
+-// screen functions
+-typedef struct {
+-	uint8_t mode;
+-	uint8_t x_mul;
+-	uint32_t (*fptr_ptlp) (uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t tile_pixel_mask);
+-	uint32_t (*fptr_ptl) (uint32_t tile_ram_adr, uint32_t lcd_adr);
+-	void (*fptr_pstl [2][2]) (uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p);
+-	void (*fct_clrl [2][2]) (uint32_t lcd_adr);
+-	void (*fct_clrr [2][2]) (uint32_t lcd_adr);
+-	void (*fct_copy [2][2]) (uint32_t lcd_adr);
+-}Screen_t;
+-
+ typedef struct {
+ 	uint8_t ok;
+-	uint16_t bgcol1;
+-	uint16_t bgcol2;
+-	uint16_t fontcol1;
+-	uint16_t fontcol2;
+ 	uint8_t use_sdcard_colors;
+ 	uint16_t bg_table[4];
+ 	uint16_t obj_table[4];
+@@ -564,18 +510,11 @@
+ 	MemCtrl_t mem_ctrl;
+ 	Status_t status;
+ 	Error_t err_nr;
+-	Screen_t screen;
+ 	Ini_t ini;
+ }GB_t;
+-GB_t GB;
+-
+ 
++extern GB_t GB;
+ 
+-// cartridge file format
+-typedef struct {
+-  const uint8_t *table; // data
+-  uint32_t size;
+-}UB_GB_File;
+ 
+ // game roms
+ extern UB_GB_File Boot_ROM;
+@@ -583,16 +522,15 @@
+ extern UB_GB_File castelian;
+ extern UB_GB_File boulder;
+ extern UB_GB_File Kwirk_ROM;
+-
+-
+-
+-
++extern UB_GB_File Space_Invaders_J_gb_ROM;
++extern UB_GB_File Space_Invaders_U_S_gb_ROM;
++extern UB_GB_File Super_Mario_Land_W_V1_0_ROM;
++extern UB_GB_File Pac_Man_U_Namco_gb_ROM;
++extern UB_GB_File Bomberman_GB_U_S_gb_ROM;
+ 
+ //--------------------------------------------------------------
+ void gameboy_init(void);
+ void gameboy_boot_flash(uint8_t game_nr);
+-void gameboy_boot_ram(void);
+-void gameboy_boot_sdram(void);
+ void gameboy_single_step(void);
+ void gameboy_set_palette(uint8_t table_nr, uint8_t color_values);
+ void gameboy_wr_internal_register(uint16_t adr, uint8_t value);
+@@ -601,4 +539,636 @@
+ void gameboy_set_screenmode(void);
+ 
+ 
++
++//--------------------------------------------------------------
++// clear/set interrupt flags
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_clr_int_40(void)
++{
++	// clear flag
++	z80.ime_flag = 0; // will be set again by RETI
++	z80.memory[IF_ADR - ROM_SIZE] &= ~IF_ADR_VBLANK;
++}
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_set_int_40(void)
++{
++	// set flag
++	z80.memory[IF_ADR - ROM_SIZE] |= IF_ADR_VBLANK;
++}
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_clr_int_48(void)
++{
++	// clear flag
++	z80.ime_flag = 0; // will be set again by RETI
++	z80.memory[IF_ADR - ROM_SIZE] &= ~IF_ADR_LCDC;
++}
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_set_int_48(void)
++{
++	// set flag
++	z80.memory[IF_ADR - ROM_SIZE] |= IF_ADR_LCDC;
++}
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_clr_int_50(void)
++{
++	// clear flag
++	z80.ime_flag = 0; // will be set again by RETI
++	z80.memory[IF_ADR - ROM_SIZE] &= ~IF_ADR_TIMER;
++}
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_set_int_50(void)
++{
++	// set flag
++	z80.memory[IF_ADR - ROM_SIZE] |= IF_ADR_TIMER;
++}
++//--------------------------------------------------------------
++
++//--------------------------------------------------------------
++// set new lcd mode [0..3]
++// (set bit0+bit1 of STAT register)
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_set_lcd_mode(uint8_t new_mode)
++{
++	uint8_t value;
++
++	value = z80.memory[STAT_ADR - ROM_SIZE];
++	value &= 0xFC;
++	value |= new_mode;
++	z80.memory[STAT_ADR - ROM_SIZE] = value;
++	Shadow.lcdc_status = value; // bit0..2
++}
++
++//--------------------------------------------------------------
++// reset lcd mode
++// (reset mode to 2)
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_reset_lcd_mode(void)
++{
++	// reset counter
++	Shadow.mcu_cycl_cnt = 0;
++	Shadow.lcd_mode = 2;
++	p_set_lcd_mode(Shadow.lcd_mode);
++}
++
++//--------------------------------------------------------------
++// calculate new lcd mode (0..3)
++// mode0: H-Blank period
++// mode1: V-Blank period
++// mode2: LCD is reading from AOM memory
++// mode3: LCD is reading from AOM and VRAM
++// ret_value : 1=time for next scanline
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline uint8_t p_calc_lcd_mode(void)
++{
++	uint8_t ret_value = 0;
++
++	// increment cycle counter
++	Shadow.mcu_cycl_cnt += z80.cycles;
++
++	if(Shadow.lcd_mode == 2) {
++		// LCD is reading from AOM memory
++		if(Shadow.mcu_cycl_cnt >= LCD_MODE2_CYCLES) {
++			// mode2 timeout
++			Shadow.mcu_cycl_cnt = 0;
++			Shadow.lcd_mode = 3;
++			p_set_lcd_mode(Shadow.lcd_mode);
++		}
++	}
++	else if(Shadow.lcd_mode == 3) {
++		// LCD is reading from AOM and VRAM
++		if(Shadow.mcu_cycl_cnt >= LCD_MODE3_CYCLES) {
++			// mode3 timeout
++			Shadow.mcu_cycl_cnt = 0;
++			Shadow.lcd_mode = 0;
++			p_set_lcd_mode(Shadow.lcd_mode);
++			// set interrupt flag if interrupt is enable
++			if((z80.memory[STAT_ADR - ROM_SIZE] & STAT_ADR_HBLANK) != 0) {
++				p_set_int_48(); // set flag
++			}
++		}
++	}
++	else if(Shadow.lcd_mode == 0) {
++		// H-Blank period
++		if(Shadow.mcu_cycl_cnt >= LCD_MODE0_CYCLES) {
++			// mode0 timeout
++			Shadow.mcu_cycl_cnt = 0;
++			if(z80.memory[LY_ADR - ROM_SIZE] == (VBLANK_START-1)) {
++				// vblank start
++				Shadow.lcd_mode = 1;
++				p_set_lcd_mode(Shadow.lcd_mode);
++				// set interrupt flag if interrupt is enable
++				if((z80.memory[STAT_ADR - ROM_SIZE] & STAT_ADR_VBLANK) != 0) {
++					p_set_int_48(); // set flag
++				}
++				// set vblank isr
++				p_set_int_40();
++			}
++			else {
++				Shadow.lcd_mode = 2;
++				p_set_lcd_mode(Shadow.lcd_mode);
++				// set interrupt flag if interrupt is enable
++				if((z80.memory[STAT_ADR - ROM_SIZE] & STAT_ADR_OAM) != 0) {
++					p_set_int_48(); // set flag
++				}
++			}
++			ret_value = 1; // end of hblank period, next line
++		}
++	}
++	else if(Shadow.lcd_mode == 1) {
++		// V-Blank period
++		if(Shadow.mcu_cycl_cnt >= LCD_LINE_CYCLES) {
++			Shadow.mcu_cycl_cnt = 0;
++			if(z80.memory[LY_ADR - ROM_SIZE] == MAX_YPOS) {
++				// mode1 timeout
++				Shadow.lcd_mode = 2;
++				p_set_lcd_mode(Shadow.lcd_mode);
++				// set interrupt flag if interrupt is enable
++				if((z80.memory[STAT_ADR - ROM_SIZE] & STAT_ADR_OAM) != 0) {
++					p_set_int_48(); // set flag
++				}
++			}
++			ret_value = 1; // next line
++		}
++	}
++
++	return ret_value;
++}
++
++#define GB_LINE_FINAL_PIXEL (GB_LCD_WIDTH - 1)
++extern DisplayBuffer displayBuffer;
++static const uint8_t clearPixel[] = {0xf0,0x0f};
++
++//--------------------------------------------------------------
++// clear left or right border (to delete clipping sprites)
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_clr_left_1()
++{
++	for (uint8_t line = 1; line <= GB_LCD_HEIGHT; ++line) {
++		displayBuffer.line[line].data[0] &= clearPixel[0];
++		displayBuffer.line[line].data[0] |= ((uint8_t)COLOR_BLACK);
++	}
++//	displayWriteMultipleLines(1, GB_LCD_HEIGHT); // todo test if this is required
++//    __asm("    bkpt     ");
++
++}
++
++__attribute__((always_inline))
++static inline void p_clr_right_1()
++{
++	for (uint8_t line = 1; line <= GB_LCD_HEIGHT; ++line) {
++		displayBuffer.line[line].data[GB_LINE_FINAL_PIXEL/2] &= clearPixel[GB_LINE_FINAL_PIXEL % 2];
++		displayBuffer.line[line].data[GB_LINE_FINAL_PIXEL/2] |= ((uint8_t)COLOR_BLACK << (4 * (GB_LINE_FINAL_PIXEL % 2)));
++	}
++//	displayWriteMultipleLines(1, GB_LCD_HEIGHT); // todo test if this is required
++//    __asm("    bkpt     ");
++}
++
++//--------------------------------------------------------------
++// draw a part of a single line of a background tile (n pixel)
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline uint32_t p_print_tile_line_part(uint32_t tile_ram_adr, uint16_t pixel, uint16_t line, uint8_t tile_pixel_mask)
++{
++	uint8_t h,l,i;
++
++	l=z80.memory[tile_ram_adr - ROM_SIZE];
++	h=z80.memory[(tile_ram_adr + 1 - ROM_SIZE)];
++
++	Shadow.px_cnt = 0;
++
++	if((tile_pixel_mask & 0x80) != 0) {
++		i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++		pixel++;
++		Shadow.px_cnt++;
++	}
++
++	if((tile_pixel_mask & 0x40) != 0) {
++		i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++		pixel++;
++		Shadow.px_cnt++;
++	}
++
++	if((tile_pixel_mask & 0x20) != 0) {
++		i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++		pixel++;
++		Shadow.px_cnt++;
++	}
++
++	if((tile_pixel_mask & 0x10) != 0) {
++		i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++		pixel++;
++		Shadow.px_cnt++;
++	}
++
++	if((tile_pixel_mask & 0x08) != 0) {
++		i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++		pixel++;
++		Shadow.px_cnt++;
++	}
++
++	if((tile_pixel_mask & 0x04) != 0) {
++		i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++		pixel++;
++		Shadow.px_cnt++;
++	}
++
++	if((tile_pixel_mask & 0x02) != 0) {
++		i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++		pixel++;
++		Shadow.px_cnt++;
++	}
++
++	if((tile_pixel_mask & 0x01) != 0) {
++		i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++		pixel++;
++		Shadow.px_cnt++;
++	}
++
++	return pixel;
++}
++
++//--------------------------------------------------------------
++// draw a single line of a background tile (8pixel)
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline uint32_t p_print_tile_line(uint32_t tile_ram_adr, uint16_t pixel, uint16_t line)
++{
++	uint8_t h,l,i;
++
++	l=z80.memory[tile_ram_adr - ROM_SIZE];
++	h=z80.memory[(tile_ram_adr + 1 - ROM_SIZE)];
++
++	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
++	displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++	displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++	pixel++;
++
++	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
++	displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++	displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++	pixel++;
++
++	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
++	displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++	displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++	pixel++;
++
++	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
++	displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++	displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++	pixel++;
++
++	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
++	displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++	displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++	pixel++;
++
++	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
++	displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++	displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++	pixel++;
++
++	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
++	displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++	displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++	pixel++;
++
++	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
++	displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++	displayBuffer.line[line].data[pixel/2] |= (Shadow.bg_col_table[i] << (4 * (pixel % 2)));
++	pixel++;
++
++	return pixel;
++}
++
++//--------------------------------------------------------------
++// draw a single line of a sprite tile (8pixel, above background)
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_print_spr_tile_line(uint32_t tile_ram_adr, uint16_t pixel, uint16_t line, uint8_t p)
++{
++	uint8_t h,l,i;
++
++	l=z80.memory[tile_ram_adr - ROM_SIZE];
++	h=z80.memory[(tile_ram_adr + 1 - ROM_SIZE)];
++
++
++
++	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++}
++
++//--------------------------------------------------------------
++// draw a single line of a sprite tile (8pixel, mirror x, above background)
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_print_spr_tile_line_mirror_x(uint32_t tile_ram_adr, uint16_t pixel, uint16_t line, uint8_t p)
++{
++	uint8_t h,l,i;
++
++	l=z80.memory[tile_ram_adr - ROM_SIZE];
++	h=z80.memory[(tile_ram_adr + 1 - ROM_SIZE)];
++
++	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
++	if(i!=SPRITE_TRANSPARENT) {
++		displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++		displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++	}
++}
++
++//--------------------------------------------------------------
++// draw a single line of a sprite tile (8pixel, behind background)
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_print_spr_tile_line_behind(uint32_t tile_ram_adr, uint16_t pixel, uint16_t line, uint8_t p)
++{
++	uint8_t h,l,i;
++
++	l=z80.memory[tile_ram_adr - ROM_SIZE];
++	h=z80.memory[(tile_ram_adr + 1 - ROM_SIZE)];
++
++	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++}
++
++//--------------------------------------------------------------
++// draw a single line of a sprite tile (8pixel, mirror x, behind background)
++//--------------------------------------------------------------
++__attribute__((always_inline))
++static inline void p_print_spr_tile_line_mirror_x_behind(uint32_t tile_ram_adr, uint16_t pixel, uint16_t line, uint8_t p)
++{
++	uint8_t h,l,i;
++
++	l=z80.memory[tile_ram_adr - ROM_SIZE];
++	h=z80.memory[(tile_ram_adr + 1 - ROM_SIZE)];
++
++	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++	pixel++;
++
++	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
++	if(i!=SPRITE_TRANSPARENT) {
++		if((displayBuffer.line[line].data[pixel/2] >> (4 * (pixel % 2))) == BG_COLOR_TRANSPARENT){
++			displayBuffer.line[line].data[pixel/2] &= clearPixel[pixel % 2];
++			displayBuffer.line[line].data[pixel/2] |= (Shadow.obj_col_table[i][p] << (4 * (pixel % 2)));
++		}
++	}
++}
++
++
++
+ #endif /* GAMEBOY_UB_H_ */

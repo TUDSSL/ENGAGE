@@ -1,0 +1,15 @@
+--- external/F746_Gameboy/inc/gameboy_file.h	2020-10-13 23:14:20.423296510 +0200
++++ external/F746_Gameboy_git/inc/gameboy_file.h	2020-10-13 21:42:07.267592392 +0200
+@@ -0,0 +1,12 @@
++#ifndef GAMEBOY_FILE_H_
++#define GAMEBOY_FILE_H_
++
++#include "stm32f7xx.h"
++
++// cartridge file format
++typedef struct {
++  const uint8_t *table; // data
++  uint32_t size;
++}UB_GB_File;
++
++#endif /* GAMEBOY_FILE_H_ */

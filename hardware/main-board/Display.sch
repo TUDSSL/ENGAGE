@@ -1,0 +1,265 @@
+EESchema Schematic File Version 4
+EELAYER 30 0
+EELAYER END
+$Descr A4 11693 8268
+encoding utf-8
+Sheet 11 12
+Title "Display"
+Date "2020-08-17"
+Rev "V1.2"
+Comp ""
+Comment1 ""
+Comment2 ""
+Comment3 ""
+Comment4 ""
+$EndDescr
+Text Notes 5100 2800 0    50   ~ 0
+Memory LCD\nLPM013M126A or\nLPM013M126C
+$Comp
+L power:GND #PWR0109
+U 1 1 5DC04226
+P 5250 4250
+F 0 "#PWR0109" H 5250 4000 50  0001 C CNN
+F 1 "GND" H 5255 4077 50  0000 C CNN
+F 2 "" H 5250 4250 50  0001 C CNN
+F 3 "" H 5250 4250 50  0001 C CNN
+	1    5250 4250
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	5250 4250 5250 4200
+Wire Wire Line
+	5250 4200 5350 4200
+Wire Wire Line
+	5350 4100 5250 4100
+Wire Wire Line
+	5250 4100 5250 4200
+Connection ~ 5250 4200
+Text Label 4750 3300 0    50   ~ 0
+DISP_CLK
+Text Label 4750 3400 0    50   ~ 0
+DISP_MOSI
+Text Label 4750 3500 0    50   ~ 0
+DISP_nCS
+Text Label 4750 3600 0    50   ~ 0
+DISP_EXTCOMIN
+Text Label 4750 3700 0    50   ~ 0
+DISP_DISP
+Wire Wire Line
+	5350 3900 5250 3900
+Wire Wire Line
+	5250 3900 5250 3800
+Wire Wire Line
+	5250 3800 5350 3800
+Connection ~ 5250 3800
+Text Notes 4700 3850 2    50   ~ 0
+3V VDD
+Text Label 4750 4000 0    50   ~ 0
+DISP_EXTMODE
+Wire Wire Line
+	5350 3600 4750 3600
+Wire Wire Line
+	5350 3500 4750 3500
+Wire Wire Line
+	5350 3400 4750 3400
+Wire Wire Line
+	5350 3300 4750 3300
+Wire Wire Line
+	5350 4000 4750 4000
+Text Label 3700 2550 2    50   ~ 0
+DISP_EXTCOMIN
+$Comp
+L power:GND #PWR0110
+U 1 1 5DC0424A
+P 3100 3900
+F 0 "#PWR0110" H 3100 3650 50  0001 C CNN
+F 1 "GND" H 3105 3727 50  0000 C CNN
+F 2 "" H 3100 3900 50  0001 C CNN
+F 3 "" H 3100 3900 50  0001 C CNN
+	1    3100 3900
+	0    -1   -1   0   
+$EndComp
+Wire Wire Line
+	3000 3950 3050 3950
+Wire Wire Line
+	3050 3950 3050 3900
+Wire Wire Line
+	3050 3850 3000 3850
+Wire Wire Line
+	3100 3900 3050 3900
+Connection ~ 3050 3900
+Wire Wire Line
+	3050 3900 3050 3850
+Text Notes 2100 3600 0    50   ~ 0
+COM freq in software\nHowever, leave options open\nSW = jump 1,2 and 3,4\nHW = jump 3,5 and connect 1 to gpio = default
+$Comp
+L Connector_Generic:Conn_02x03_Odd_Even J15
+U 1 1 5DC04259
+P 2700 3950
+F 0 "J15" H 2750 4200 50  0000 C CNN
+F 1 "Conn_02x03_Odd_Even" H 2750 4176 50  0001 C CNN
+F 2 "Connector_PinSocket_2.54mm:PinSocket_2x03_P2.54mm_Vertical_SMD" H 2700 3950 50  0001 C CNN
+F 3 "~" H 2700 3950 50  0001 C CNN
+F 4 "M20-8760346" H 2700 3950 50  0001 C CNN "MPN"
+	1    2700 3950
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	2150 4050 2500 4050
+Wire Wire Line
+	3000 4050 3050 4050
+Wire Wire Line
+	3050 4050 3050 3950
+Connection ~ 3050 3950
+$Comp
+L Device:C C?
+U 1 1 5DC04269
+P 4200 4050
+AR Path="/5DBF4319/5DC04269" Ref="C?"  Part="1" 
+AR Path="/5DC04269" Ref="C?"  Part="1" 
+AR Path="/5DC02CFB/5DC04269" Ref="C13"  Part="1" 
+F 0 "C13" V 4452 4050 50  0000 C CNN
+F 1 "100nF" V 4361 4050 50  0000 C CNN
+F 2 "Capacitor_SMD:C_0603_1608Metric" H 4238 3900 50  0001 C CNN
+F 3 "~" H 4200 4050 50  0001 C CNN
+F 4 "GCM188R71H104KA57D" H 4200 4050 50  0001 C CNN "MPN"
+	1    4200 4050
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	4200 3700 4200 3900
+Wire Wire Line
+	4200 3700 5350 3700
+Wire Wire Line
+	4200 4200 4200 4250
+$Comp
+L Device:C C?
+U 1 1 5DC04278
+P 6150 3500
+AR Path="/5DBF4319/5DC04278" Ref="C?"  Part="1" 
+AR Path="/5DC04278" Ref="C?"  Part="1" 
+AR Path="/5DC02CFB/5DC04278" Ref="C14"  Part="1" 
+F 0 "C14" V 6402 3500 50  0000 C CNN
+F 1 "1uF" V 6311 3500 50  0000 C CNN
+F 2 "Capacitor_SMD:C_0603_1608Metric" H 6188 3350 50  0001 C CNN
+F 3 "~" H 6150 3500 50  0001 C CNN
+F 4 "CL10B105KP8NNNC" H 6150 3500 50  0001 C CNN "MPN"
+	1    6150 3500
+	1    0    0    -1  
+$EndComp
+$Comp
+L Device:C C?
+U 1 1 5DC0427E
+P 6350 3500
+AR Path="/5DBF4319/5DC0427E" Ref="C?"  Part="1" 
+AR Path="/5DC0427E" Ref="C?"  Part="1" 
+AR Path="/5DC02CFB/5DC0427E" Ref="C15"  Part="1" 
+F 0 "C15" V 6602 3500 50  0000 C CNN
+F 1 "1uF" V 6511 3500 50  0000 C CNN
+F 2 "Capacitor_SMD:C_0603_1608Metric" H 6388 3350 50  0001 C CNN
+F 3 "~" H 6350 3500 50  0001 C CNN
+F 4 "CL10B105KP8NNNC" H 6350 3500 50  0001 C CNN "MPN"
+	1    6350 3500
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	6350 3650 6350 3700
+Wire Wire Line
+	6350 3700 6250 3700
+Wire Wire Line
+	6150 3700 6150 3650
+Wire Wire Line
+	6150 3350 6150 3300
+Wire Wire Line
+	6350 3300 6350 3350
+$Comp
+L power:GND #PWR0120
+U 1 1 5DC0428D
+P 4200 4250
+F 0 "#PWR0120" H 4200 4000 50  0001 C CNN
+F 1 "GND" H 4205 4077 50  0000 C CNN
+F 2 "" H 4200 4250 50  0001 C CNN
+F 3 "" H 4200 4250 50  0001 C CNN
+	1    4200 4250
+	1    0    0    -1  
+$EndComp
+$Comp
+L power:GND #PWR0121
+U 1 1 5DC04293
+P 6250 3750
+F 0 "#PWR0121" H 6250 3500 50  0001 C CNN
+F 1 "GND" H 6255 3577 50  0000 C CNN
+F 2 "" H 6250 3750 50  0001 C CNN
+F 3 "" H 6250 3750 50  0001 C CNN
+	1    6250 3750
+	1    0    0    -1  
+$EndComp
+Wire Wire Line
+	6250 3750 6250 3700
+Connection ~ 6250 3700
+Wire Wire Line
+	6250 3700 6150 3700
+Text Notes 5850 4200 0    50   ~ 0
+Decoupling \nclose to VDD, VDDA
+Text HLabel 3100 2400 0    50   Input ~ 0
+VIN
+Wire Wire Line
+	3100 2400 3300 2400
+Text Label 3150 2400 0    50   ~ 0
+VCC_3V
+Text Label 2150 4050 0    50   ~ 0
+VCC_3V
+Text Label 4750 3800 0    50   ~ 0
+VCC_3V
+Wire Wire Line
+	4750 3800 5250 3800
+Text HLabel 3100 2550 0    50   Input ~ 0
+EXTCOMIN
+Text HLabel 4750 3300 0    50   Input ~ 0
+CLK
+Text HLabel 4750 3400 0    50   Input ~ 0
+MOSI
+Text HLabel 4750 3500 0    50   Input ~ 0
+nCS
+Wire Wire Line
+	3750 2550 3100 2550
+Text Label 2450 3850 2    50   ~ 0
+DISP_EXTCOMIN
+Text Label 2400 3950 2    50   ~ 0
+DISP_EXTMODE
+Wire Wire Line
+	2500 3850 1850 3850
+Wire Wire Line
+	2500 3950 1850 3950
+Text HLabel 4200 3700 0    50   Input ~ 0
+DISP
+Text Label 6150 3300 0    50   ~ 0
+VCC_3V
+Wire Wire Line
+	6150 3300 6350 3300
+$Comp
+L jaspers_lib:52745-1097 J3
+U 1 1 5DD63273
+P 5550 3800
+F 0 "J3" H 5638 3713 50  0000 L CNN
+F 1 "52745-1097" H 5638 3622 50  0000 L CNN
+F 2 "jaspers_footprints:FPC_10_TOP" H 5550 3800 50  0001 C CNN
+F 3 "~" H 5550 3800 50  0001 C CNN
+F 4 "52745-1097" H 5550 3800 50  0001 C CNN "MPN"
+	1    5550 3800
+	1    0    0    1   
+$EndComp
+$Comp
+L power:GND #PWR0127
+U 1 1 5DD64893
+P 5550 3050
+F 0 "#PWR0127" H 5550 2800 50  0001 C CNN
+F 1 "GND" H 5555 2877 50  0000 C CNN
+F 2 "" H 5550 3050 50  0001 C CNN
+F 3 "" H 5550 3050 50  0001 C CNN
+	1    5550 3050
+	-1   0    0    1   
+$EndComp
+Wire Wire Line
+	5550 3050 5550 3100
+$EndSCHEMATC

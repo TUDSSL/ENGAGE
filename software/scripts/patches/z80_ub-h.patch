@@ -1,0 +1,209 @@
+--- external/F746_Gameboy/inc/z80_ub.h	2018-04-24 08:17:10.000000000 +0200
++++ external/F746_Gameboy_git/inc/z80_ub.h	2020-10-13 21:42:07.267592392 +0200
+@@ -5,10 +5,12 @@
+ #ifndef Z80_UB_H_
+ #define Z80_UB_H_
+ 
+-
+ #include "stm32f7xx.h"
+-#include "gameboy_ub.h"
+-
++#include "emulator_settings.h"
++#include "memtracker.h"
++#ifdef CHECKPOINT
++#include "checkpoint.h"
++#endif
+ 
+ // struct for all mcu register [a,f,b,c,d,e,h,l / PC,SP]
+ // two 8bit registers combined to a 16bit registerpair
+@@ -109,42 +111,56 @@
+ 	uint8_t halt_mode;	 		// 0=first call, 1=wait
+ 	uint8_t halt_skip;	 		// 1=skip halt opcode
+ 	uint8_t cycles;				// current mcu cylces
+-	uint8_t memory[MEM_SIZE];	// memory (ROM+RAM)
+-	const uint8_t *rom;			// pointer to the rom start adr
++	const uint8_t* rom;				// memory (ROM)
++	uint8_t* memory;	// memory (RAM)
+ 	uint8_t status;				// status flags
+ }z80_t;
+-z80_t z80;
++extern z80_t z80;
++
++extern uint8_t z80_memory[RAM_SIZE];
+ 
+ 
+ // temp variables
+-uint8_t z80_byte;	// 8bit unsigned variable
+-uint16_t z80_word;	// 16bit unsigned variable
+-uint32_t z80_long;	// 32bit unsigned variable
+-uint8_t u8_index;	// 8bit unsigned
+-uint8_t u8_temp;	// 8bit unsigned
++extern uint8_t z80_byte;	// 8bit unsigned variable
++extern uint16_t z80_word;	// 16bit unsigned variable
++extern uint32_t z80_long;	// 32bit unsigned variable
++extern uint8_t u8_index;	// 8bit unsigned
++extern uint8_t u8_temp;	// 8bit unsigned
+ 
+ // 8bit combined unsigned/signed variable
+-union
++union var8bit
+ {
+ 	uint8_t uint8;
+ 	int8_t sint8;
+-}var8bit;
++};
++extern union var8bit var8bit;
+ 
+ //--------------------------------------------------------------
+ // memory interactions (8bit)
+ // select supported memory controller in "gameboy_ub.h"
+ //--------------------------------------------------------------
+ 
++//--------------------------------------------------------------
++// Memory Controller defines
++//--------------------------------------------------------------
++#define MBC0_INTERNAL_REGISTERS	0xFF00	// above this address are gameboy internal registers
++#define MBC1_WR_RAM_EN			0x0000	// ram enable			[0x0000..0x1FFF]
++#define MBC1_WR_BANK_LO			0x2000	// rom bank lo			[0x2000..0x3FFF]
++#define MBC1_WR_BANK_HI			0x4000	// rom bank hi			[0x4000..0x5FFF]
++#define MBC1_WR_MODE_SELECT		0x6000	// ram/rom mode select	[0x6000..0x7FFF]
++#define MBC1_RD_BANKN			0x4000	// read bank [1..n]		[0x4000..0x7FFF]
++#define MBC1_RD_BANK_SIZE		0x4000	// read bank size
++
+ 
+ #if SUPPORTED_MBC_VERSION == 0
+ 
+ // read 8bit from memory
+-#define RD_BYTE_MEM(adr) (z80.memory[adr])
++#define RD_BYTE_MEM(adr) (z80.memory[adr - ROM_SIZE])
+ 
+ // write 8bit into memory
+ #define WR_BYTE_MEM(adr, value) { \
+ if(adr >= ROM_SIZE) { \
+-z80.memory[adr] = value; \
++z80.memory[adr - ROM_SIZE] = value; \
+ } \
+ if(adr >= MBC0_INTERNAL_REGISTERS) { \
+ 	gameboy_wr_internal_register(adr, value); \
+@@ -154,8 +170,63 @@
+ #endif
+ 
+ #if SUPPORTED_MBC_VERSION == 1
+-uint8_t RD_BYTE_MEM(uint16_t adr);
+-void WR_BYTE_MEM(uint16_t adr, uint8_t value);
++//--------------------------------------------------------------
++// read from rom (0x0000..0x8000)
++// (emulation of memory bank controller)
++//--------------------------------------------------------------
++extern uint8_t memoryControllerType;
++extern uint32_t memoryControllerBankOffset;
++
++__attribute__((always_inline))
++static inline uint8_t gameboy_rd_from_rom(uint16_t adr)
++{
++	uint8_t value;
++	const uint8_t *ptr;
++
++	if(memoryControllerType == 0) return z80.rom[adr];
++
++	if(adr >= MBC1_RD_BANKN) {
++		// 0x4000..0x7FFF: read bank 1..n
++		ptr = z80.rom;
++		ptr += memoryControllerBankOffset;
++		ptr += adr;
++		value = *ptr;
++	}
++	else {
++		// 0x0000..0x3FFF: read bank 0
++		value = z80.rom[adr];
++	}
++
++	return value;
++}
++
++extern void gameboy_wr_internal_register(uint16_t adr, uint8_t value);
++extern void gameboy_wr_into_rom(uint16_t adr, uint8_t value);
++
++__attribute__((always_inline))
++static inline uint8_t RD_BYTE_MEM(uint16_t adr)
++{
++	if(adr < ROM_SIZE) {
++		return gameboy_rd_from_rom(adr);
++	}
++	else {
++		return z80.memory[adr - ROM_SIZE];
++	}
++}
++
++__attribute__((always_inline))
++static inline void WR_BYTE_MEM(uint16_t adr, uint8_t value)
++{
++	if(adr < ROM_SIZE) {
++		gameboy_wr_into_rom(adr, value);
++	}
++	else {
++		z80.memory[adr - ROM_SIZE] = value;
++		if(adr >= MBC0_INTERNAL_REGISTERS) {
++			gameboy_wr_internal_register(adr, value);
++		}
++	}
++}
+ #endif
+ 
+ 
+@@ -167,17 +238,40 @@
+ #if SUPPORTED_MBC_VERSION == 0
+ 
+ // read 16bit from memory
+-#define RD_WORD_MEM(adr) ((z80.memory[adr+1]<<8) | (z80.memory[adr]))
++#define RD_WORD_MEM(adr) ((z80.memory[adr + 1 - ROM_SIZE]<<8) | (z80.memory[adr - ROM_SIZE]))
+ 
+ // write 16bit into memory
+-#define WR_WORD_MEM(adr, value) {z80.memory[adr] = (value&0xFF);z80.memory[adr+1] = (value>>8);}
++#define WR_WORD_MEM(adr, value) {z80.memory[adr - ROM_SIZE] = (value&0xFF);z80.memory[adr + 1 - ROM_SIZE] = (value>>8);}
+ 
+ #endif
+ 
+ 
+ #if SUPPORTED_MBC_VERSION == 1
+-uint16_t RD_WORD_MEM(uint16_t adr);
+-void WR_WORD_MEM(uint16_t adr, uint16_t value);
++__attribute__((always_inline))
++static inline uint16_t RD_WORD_MEM(uint16_t adr)
++{
++	uint8_t hi, lo;
++	uint16_t value;
++
++	lo = RD_BYTE_MEM(adr);
++	hi = RD_BYTE_MEM(adr+1);
++
++	value = (hi<<8) | lo;
++
++	return value;
++}
++
++__attribute__((always_inline))
++static inline void WR_WORD_MEM(uint16_t adr, uint16_t value)
++{
++	uint8_t u8;
++
++	u8 = (value&0xFF);
++	WR_BYTE_MEM(adr, u8);
++
++	u8 = (value>>8);
++	WR_BYTE_MEM(adr+1, u8);
++}
+ #endif
+ 
+ //--------------------------------------------------------------
+@@ -188,7 +282,10 @@
+ //--------------------------------------------------------------
+ void z80_init(const uint8_t *rom, uint32_t length);
+ void z80_reinit(const uint8_t *rom, uint32_t length);
++
++#if !OPCODE_GOTO
+ void z80_single_step(void);
++#endif
+ 
+ 
+ 

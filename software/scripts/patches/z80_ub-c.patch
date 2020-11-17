@@ -1,0 +1,141 @@
+--- external/F746_Gameboy_source/src/z80_ub.c	2018-04-24 08:17:10.000000000 +0200
++++ external/F746_Gameboy_git/src/z80_ub.c	2020-10-13 23:32:12.329769000 +0200
+@@ -12,15 +12,33 @@
+ //--------------------------------------------------------------
+ 
+ #include "z80_ub.h"
++#if !OPCODE_GOTO
+ #include "z80_opcode.c"
+ #include "z80_opcode_cb.c"
++#endif
+ 
++z80_t z80;
++// temp variables
++uint8_t z80_byte;	// 8bit unsigned variable
++uint16_t z80_word;	// 16bit unsigned variable
++uint32_t z80_long;	// 32bit unsigned variable
++uint8_t u8_index;	// 8bit unsigned
++uint8_t u8_temp;	// 8bit unsigned
++
++union var8bit var8bit;
++
++// z80 Memory
++#ifdef CHECKPOINT
++CHECKPOINT_EXCLUDE_BSS
++uint8_t __attribute__ ((aligned (REGIONSIZE_BYTES))) z80_memory[RAM_SIZE];
++#else
++uint8_t __attribute__ ((aligned (REGIONSIZE_BYTES))) z80_memory[RAM_SIZE];
++#endif
++#if !OPCODE_GOTO
+ static void no_oc(void); // normal opcode
+ static void cb_oc(void); // cb opcode
+ 
+ 
+-
+-
+ //------------------------------------------------
+ // to avoid if statement after each opcode
+ // to choose between normal opcode and 0xCB opcodes
+@@ -44,6 +62,7 @@
+ 		no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc, // 0xe0
+ 		no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc,no_oc  // 0xf0
+ };
++#endif
+ 
+ 
+ //--------------------------------------------------------------
+@@ -68,19 +87,20 @@
+ 	z80.cycles = 0;
+ 	z80.status = 0;
+ 	z80.rom = rom;
++	z80.memory = z80_memory;
+ 
+ 	// clear ram
+ 	for(n=0;n<RAM_SIZE;n++) {
+-		z80.memory[n+ROM_SIZE]=0x00;
++		z80.memory[n]=0x00;
+ 	}
+ 
+-	if(length>ROM_SIZE) length=ROM_SIZE;
++//	if(length>ROM_SIZE) length=ROM_SIZE;
+ 
+-	// copy rom into memory
+-	for(n=0;n<length;n++) {
+-		z80.memory[n]=*rom;
+-		rom++;
+-	}
++//	// copy rom into memory
++//	for(n=0;n<length;n++) {
++//		z80.memory[n]=*rom;
++//		rom++;
++//	}
+ }
+ 
+ //--------------------------------------------------------------
+@@ -102,6 +122,7 @@
+ }
+ 
+ 
++#if !OPCODE_GOTO
+ //--------------------------------------------------------------
+ // executes single z80 instruction
+ //--------------------------------------------------------------
+@@ -137,58 +158,4 @@
+ 	// get used mcu cycles
+ 	z80.cycles = cycles_cb[z80.opcode];
+ }
+-
+-//--------------------------------------------------------------
+-#if SUPPORTED_MBC_VERSION == 1
+-uint8_t RD_BYTE_MEM(uint16_t adr)
+-{
+-	if(adr < ROM_SIZE) {
+-		return gameboy_rd_from_rom(adr);
+-	}
+-	else {
+-		return z80.memory[adr];
+-	}
+-}
+-
+-
+-void WR_BYTE_MEM(uint16_t adr, uint8_t value)
+-{
+-	if(adr < ROM_SIZE) {
+-		gameboy_wr_into_rom(adr, value);
+-	}
+-	else {
+-		z80.memory[adr] = value;
+-		if(adr >= MBC0_INTERNAL_REGISTERS) {
+-			gameboy_wr_internal_register(adr, value);
+-		}
+-	}
+-}
+-
+-uint16_t RD_WORD_MEM(uint16_t adr)
+-{
+-	uint8_t hi, lo;
+-	uint16_t value;
+-
+-	lo = RD_BYTE_MEM(adr);
+-	hi = RD_BYTE_MEM(adr+1);
+-
+-	value = (hi<<8) | lo;
+-
+-	return value;
+-}
+-
+-void WR_WORD_MEM(uint16_t adr, uint16_t value)
+-{
+-	uint8_t u8;
+-
+-	u8 = (value&0xFF);
+-	WR_BYTE_MEM(adr, u8);
+-
+-	u8 = (value>>8);
+-	WR_BYTE_MEM(adr+1, u8);
+-}
+-
+-
+ #endif
+-
+-

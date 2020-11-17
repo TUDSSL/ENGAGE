@@ -1,0 +1,3485 @@
+--- external/F746_Gameboy/inc/z80_opcode_func.h	2018-04-24 08:19:38.000000000 +0200
++++ external/F746_Gameboy_git/inc/z80_opcode_func.h	2020-10-13 21:42:07.267592392 +0200
+@@ -1,1752 +1,1730 @@
+-//--------------------------------------------------------------
+-// File     : z80_opcode.c
+-// Datum    : 01.04.2018
+-// Version  : 1.0
+-// Autor    : UB
+-// Web      : http://mikrocontroller.bplaced.net
+-// CPU      : STM32F746
+-// IDE      : OpenSTM32
+-// GCC      : 4.9 2015q2
+-// Module   : CubeHAL
+-// Funktion : handles Z80 opcodes (Gameboy version)
+-//--------------------------------------------------------------
+-
+-
+-#include "z80_opcode.h"
+-
+-
+-// page numbers from rodnay zaks z80 book
+-
+-//==============================================
+-// unit test roms :
+-// cpu_instr.zip from (http://gbdev.gg8.se/files/roms/blargg-gb-tests/)
+-// rom: ut01_rom.c -> passed (special)
+-// rom: ut02_rom.c -> passed (ISR)
+-// rom: ut03_rom.c -> passed (OP sp,hl)
+-// rom: ut04_rom.c -> passed (OP r,imm)
+-// rom: ut05_rom.c -> passed (OP rp)
+-// rom: ut06_rom.c -> passed (LD r,r)
+-// rom: ut07_rom.c -> passed (JP, CALL)
+-// rom: ut08_rom.c -> passed (misc)
+-// rom: ut09_rom.c -> passed (OP r,r)
+-// rom: ut10_rom.c -> passed (bit ops)
+-// rom: ut11_rom.c -> passed (OP a,(hl))
+-//==============================================
+-
+-
+-//================================================
+-// Z80 opcodes: 0x00 .. 0x0F
+-// emulation status:
+-// 0x00 : ut09_rom.c ok
+-// 0x01 : ut08_rom.c ok
+-// 0x02 : ut11_rom.c ok
+-// 0x03 : ut05_rom.c ok
+-// 0x04 : ut09_rom.c ok
+-// 0x05 : ut09_rom.c ok
+-// 0x06 : ut04_rom.c ok
+-// 0x07 : ut09_rom.c ok
+-// 0x08 : ut08_rom.c ok
+-// 0x09 : ut05_rom.c ok
+-// 0x0a : ut11_rom.c ok
+-// 0x0b : ut05_rom.c ok
+-// 0x0c : ut09_rom.c ok
+-// 0x0d : ut09_rom.c ok
+-// 0x0e : ut04_rom.c ok
+-// 0x0f : ut09_rom.c ok
+-//================================================
+-
+-
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// NOP (1/4) [-,-,-,-]
+-static void op0_0x00(void)
+-{
+-	NOP;
+-}
+-// LD BC,nn (3/12) [-,-,-,-] P293
+-static void op0_0x01(void)
+-{
+-	LD_DD_N16(z80.reg.bc, (z80.reg.pc+1));
+-}
+-// LD (BC),A (1/8) [-,-,-,-] P299
+-static void op0_0x02(void)
+-{
+-	LD_A16(z80.reg.bc);
+-}
+-// INC BC (1/8) [-,-,-,-] P265
+-static void op0_0x03(void)
+-{
+-	INC_DR(z80.reg.bc);
+-}
+-// INC B (1/4) [Z,0,H,-] P264
+-static void op0_0x04(void)
+-{
+-	INC_R(z80.reg.b);
+-}
+-// DEC B (1/4) [Z,1,H,-] P238
+-static void op0_0x05(void)
+-{
+-	DEC_R(z80.reg.b);
+-}
+-// LD B,n (2/8) [-,-,-,-] P295
+-static void op0_0x06(void)
+-{
+-	LD_N8(z80.reg.b, (z80.reg.pc+1));
+-}
+-// RLCA (1/4) [0,0,0,C] P399
+-static void op0_0x07(void)
+-{
+-	RLCA(z80.reg.a);
+-}
+-// LD (nn),SP (3/20) [-,-,-,-] (Gameboy spec.)
+-static void op0_0x08(void)
+-{
+-	LD_N16_SP((z80.reg.pc+1));
+-}
+-// ADD HL,BC (1/8) [-,0,H,C] P203
+-static void op0_0x09(void)
+-{
+-	ADD_DD(z80.reg.bc);
+-}
+-// LD A,(BC) (1/8) [-,-,-,-] P329
+-static void op0_0x0a(void)
+-{
+-	LD_M(z80.reg.bc);
+-}
+-// DEC BC (1/8) [-,-,-,-] P240
+-static void op0_0x0b(void)
+-{
+-	DEC_DR(z80.reg.bc);
+-}
+-// INC C (1/4) [Z,0,H,-] P264
+-static void op0_0x0c(void)
+-{
+-	INC_R(z80.reg.c);
+-}
+-// DEC C (1/4) [Z,1,H,-] P238
+-static void op0_0x0d(void)
+-{
+-	DEC_R(z80.reg.c);
+-}
+-// LD C,n (2/8) [-,-,-,-] P295
+-static void op0_0x0e(void)
+-{
+-	LD_N8(z80.reg.c, (z80.reg.pc+1));
+-}
+-// RRCA (1/4) [0,0,0,C] P415
+-static void op0_0x0f(void)
+-{
+-	RRCA(z80.reg.a);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0x10 .. 0x1F
+-// emulation status:
+-// 0x10 : opcode STOP can't be tested
+-// 0x11 : ut08_rom.c ok
+-// 0x12 : ut11_rom.c ok
+-// 0x13 : ut05_rom.c ok
+-// 0x14 : ut09_rom.c ok
+-// 0x15 : ut09_rom.c ok
+-// 0x16 : ut04_rom.c ok
+-// 0x17 : ut09_rom.c ok
+-// 0x18 : ut07_rom.c ok
+-// 0x19 : ut05_rom.c ok
+-// 0x1a : ut11_rom.c ok
+-// 0x1b : ut05_rom.c ok
+-// 0x1c : ut09_rom.c ok
+-// 0x1d : ut09_rom.c ok
+-// 0x1e : ut04_rom.c ok
+-// 0x1f : ut09_rom.c ok
+-//================================================
+-
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// STOP 0 (2/4) [-,-,-,-] (Gameboy spec)
+-static void op0_0x10(void)
+-{
+-	STOP;
+-}
+-// LD DE,nn (3/12) [-,-,-,-] P293
+-static void op0_0x11(void)
+-{
+-	LD_DD_N16(z80.reg.de, (z80.reg.pc+1));
+-}
+-// LD (DE),A (1/8) [-,-,-,-] P300
+-static void op0_0x12(void)
+-{
+-	LD_A16(z80.reg.de);
+-}
+-// INC DE (1/8) [-,-,-,-] P265
+-static void op0_0x13(void)
+-{
+-	INC_DR(z80.reg.de);
+-}
+-// INC D (1/4) [Z,0,H,-] P264
+-static void op0_0x14(void)
+-{
+-	INC_R(z80.reg.d);
+-}
+-// DEC D (1/4) [Z,1,H,-] P238
+-static void op0_0x15(void)
+-{
+-	DEC_R(z80.reg.d);
+-}
+-// LD D,n (2/8) [-,-,-,-] P295
+-static void op0_0x16(void)
+-{
+-	LD_N8(z80.reg.d, (z80.reg.pc+1));
+-}
+-// RLA (1/4) [0,0,0,C] P398
+-static void op0_0x17(void)
+-{
+-	RLA(z80.reg.a);
+-}
+-// JR n (2/12) [-,-,-,-] P290
+-static void op0_0x18(void)
+-{
+-	JR_N8((z80.reg.pc+1));
+-}
+-// ADD HL,DE (1/8) [-,0,H,C] P203
+-static void op0_0x19(void)
+-{
+-	ADD_DD(z80.reg.de);
+-}
+-// LD A,(DE) (1/8) [-,-,-,-] P330
+-static void op0_0x1a(void)
+-{
+-	LD_M(z80.reg.de);
+-}
+-// DEC DE (1/8) [-,-,-,-] P240
+-static void op0_0x1b(void)
+-{
+-	DEC_DR(z80.reg.de);
+-}
+-// INC E (1/4) [Z,0,H,-] P264
+-static void op0_0x1c(void)
+-{
+-	INC_R(z80.reg.e);
+-}
+-// DEC E (1/4) [Z,1,H,-] P238
+-static void op0_0x1d(void)
+-{
+-	DEC_R(z80.reg.e);
+-}
+-// LD E,n (2/8) [-,-,-,-] P295
+-static void op0_0x1e(void)
+-{
+-	LD_N8(z80.reg.e, (z80.reg.pc+1));
+-}
+-// RRA (1/4) [0,0,0,C] P412
+-static void op0_0x1f(void)
+-{
+-	RRA(z80.reg.a);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0x20 .. 0x2F
+-// emulation status:
+-// 0x20 : ut07_rom.c ok
+-// 0x21 : ut08_rom.c ok
+-// 0x22 : ut11_rom.c ok
+-// 0x23 : ut05_rom.c ok
+-// 0x24 : ut09_rom.c ok
+-// 0x25 : ut09_rom.c ok
+-// 0x26 : ut04_rom.c ok
+-// 0x27 : ut01_rom.c ok / ut11_rom.c ok
+-// 0x28 : ut07_rom.c ok
+-// 0x29 : ut05_rom.c ok
+-// 0x2a : ut11_rom.c ok
+-// 0x2b : ut05_rom.c ok
+-// 0x2c : ut09_rom.c ok
+-// 0x2d : ut09_rom.c ok
+-// 0x2e : ut04_rom.c ok
+-// 0x2f : ut09_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// JR NZ,n (2/12,8) [-,-,-,-] P288
+-static void op0_0x20(void)
+-{
+-	JR_NZ((z80.reg.pc+1));
+-}
+-// LD HL,nn (3/12) [-,-,-,-] P293
+-static void op0_0x21(void)
+-{
+-	LD_DD_N16(z80.reg.hl, (z80.reg.pc+1));
+-}
+-// LD (HL++),A (1/8) [-,-,-,-] (gameboy spec.)
+-static void op0_0x22(void)
+-{
+-	LD_A16(z80.reg.hl);
+-	z80.reg.hl++;
+-}
+-// INC HL (1/8) [-,-,-,-] P265
+-static void op0_0x23(void)
+-{
+-	INC_DR(z80.reg.hl);
+-}
+-// INC H (1/4) [Z,0,H,-] P264
+-static void op0_0x24(void)
+-{
+-	INC_R(z80.reg.h);
+-}
+-// DEC H (1/4) [Z,1,H,-] P238
+-static void op0_0x25(void)
+-{
+-	DEC_R(z80.reg.h);
+-}
+-// LD H,n (2/8) [-,-,-,-] P295
+-static void op0_0x26(void)
+-{
+-	LD_N8(z80.reg.h, (z80.reg.pc+1));
+-}
+-// DAA (1/4) [Z,-,0,C] P236
+-static void op0_0x27(void)
+-{
+-	DAA;
+-}
+-// JR Z,n (2/12,8) [-,-,-,-] P288
+-static void op0_0x28(void)
+-{
+-	JR_Z((z80.reg.pc+1));
+-}
+-// ADD HL,HL (1/8) [-,0,H,C] P203
+-static void op0_0x29(void)
+-{
+-	ADD_DD(z80.reg.hl);
+-}
+-// LD A,(HL++) (1/8) [-,-,-,-] (Gameboy spec)
+-static void op0_0x2a(void)
+-{
+-	LD_M(z80.reg.hl);
+-	z80.reg.hl++;
+-}
+-// DEC HL (1/8) [-,-,-,-] P240
+-static void op0_0x2b(void)
+-{
+-	DEC_DR(z80.reg.hl);
+-}
+-// INC L (1/4) [Z,0,H,-] P264
+-static void op0_0x2c(void)
+-{
+-	INC_R(z80.reg.l);
+-}
+-// DEC L (1/4) [Z,1,H,-] P238
+-static void op0_0x2d(void)
+-{
+-	DEC_R(z80.reg.l);
+-}
+-// LD L,n (2/8) [-,-,-,-] P295
+-static void op0_0x2e(void)
+-{
+-	LD_N8(z80.reg.l, (z80.reg.pc+1));
+-}
+-// CPL (1/4) [-,1,1,-] P235
+-static void op0_0x2f(void)
+-{
+-	CPL;
+-}
+-
+-//================================================
+-// Z80 opcodes: 0x30 .. 0x3F
+-// emulation status:
+-// 0x30 : ut07_rom.c ok
+-// 0x31 : ut08_rom.c ok
+-// 0x32 : ut11_rom.c ok
+-// 0x33 : ut03_rom.c ok
+-// 0x34 : ut11_rom.c ok
+-// 0x35 : ut11_rom.c ok
+-// 0x36 : ut04_rom.c ok
+-// 0x37 : ut09_rom.c ok
+-// 0x38 : ut07_rom.c ok
+-// 0x39 : ut03_rom.c ok
+-// 0x3a : ut11_rom.c ok
+-// 0x3b : ut03_rom.c ok
+-// 0x3c : ut09_rom.c ok
+-// 0x3d : ut09_rom.c ok
+-// 0x3e : ut04_rom.c ok
+-// 0x3f : ut09_rom.c ok
+-//================================================
+-
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// JR NC,n (2/12,8) [-,-,-,-] P288
+-static void op0_0x30(void)
+-{
+-	JR_NC((z80.reg.pc+1));
+-}
+-// LD SP,nn (3/12) [-,-,-,-] P293
+-static void op0_0x31(void)
+-{
+-	LD_DD_N16(z80.reg.sp, (z80.reg.pc+1));
+-}
+-// LD (HL--),A (1/8) [-,-,-,-] (gameboy spec.)
+-static void op0_0x32(void)
+-{
+-	LD_A16(z80.reg.hl);
+-	z80.reg.hl--;
+-}
+-// INC SP (1/8) [-,-,-,-] P265
+-static void op0_0x33(void)
+-{
+-	INC_DR(z80.reg.sp);
+-}
+-// INC (HL) (1/12) [Z,0,H,-] P267
+-static void op0_0x34(void)
+-{
+-	INC_A16(z80.reg.hl);
+-}
+-// DEC (HL) (1/12) [Z,1,H,-] P238
+-static void op0_0x35(void)
+-{
+-	DEC_A16(z80.reg.hl);
+-}
+-// LD (HL),n (2/12) [-,-,-,-] P301
+-static void op0_0x36(void)
+-{
+-	LD_HL_N8((z80.reg.pc+1));
+-}
+-// SCF (1/4) [-,0,0,1] P424
+-static void op0_0x37(void)
+-{
+-	SCF;
+-}
+-// JR C,n (2/12,8) [-,-,-,-] P288
+-static void op0_0x38(void)
+-{
+-	JR_C((z80.reg.pc+1));
+-}
+-// ADD HL,SP (1/8) [-,0,H,C] P203
+-static void op0_0x39(void)
+-{
+-	ADD_DD(z80.reg.sp);
+-}
+-// LD A,(HL--) (1/8) [-,-,-,-] (Gameboy spec)
+-static void op0_0x3a(void)
+-{
+-	LD_M(z80.reg.hl);
+-	z80.reg.hl--;
+-}
+-// DEC SP (1/8) [-,-,-,-] P240
+-static void op0_0x3b(void)
+-{
+-	DEC_DR(z80.reg.sp);
+-}
+-// INC A (1/4) [Z,0,H,-] P264
+-static void op0_0x3c(void)
+-{
+-	INC_R(z80.reg.a);
+-}
+-// DEC A (1/4) [Z,1,H,-] P238
+-static void op0_0x3d(void)
+-{
+-	DEC_R(z80.reg.a);
+-}
+-// LD A,n (2/8) [-,-,-,-] P295
+-static void op0_0x3e(void)
+-{
+-	LD_N8(z80.reg.a, (z80.reg.pc+1));
+-}
+-// CCF (1/4) [-,0,0,C] P224
+-static void op0_0x3f(void)
+-{
+-	CCF;
+-}
+-
+-//================================================
+-// Z80 opcodes: 0x40 .. 0x4F
+-// emulation status:
+-// 0x40 : ut06_rom.c ok
+-// 0x41 : ut06_rom.c ok
+-// 0x42 : ut06_rom.c ok
+-// 0x43 : ut06_rom.c ok
+-// 0x44 : ut06_rom.c ok
+-// 0x45 : ut06_rom.c ok
+-// 0x46 : ut06_rom.c ok
+-// 0x47 : ut06_rom.c ok
+-// 0x48 : ut06_rom.c ok
+-// 0x49 : ut06_rom.c ok
+-// 0x4a : ut06_rom.c ok
+-// 0x4b : ut06_rom.c ok
+-// 0x4c : ut06_rom.c ok
+-// 0x4d : ut06_rom.c ok
+-// 0x4e : ut06_rom.c ok
+-// 0x4f : ut06_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// LD B,B (1/4) [-,-,-,-] P297
+-static void op0_0x40(void)
+-{
+-	LD_R(z80.reg.b, z80.reg.b);
+-}
+-// LD B,C (1/4) [-,-,-,-] P297
+-static void op0_0x41(void)
+-{
+-	LD_R(z80.reg.b, z80.reg.c);
+-}
+-// LD B,D (1/4) [-,-,-,-] P297
+-static void op0_0x42(void)
+-{
+-	LD_R(z80.reg.b, z80.reg.d);
+-}
+-// LD B,E (1/4) [-,-,-,-] P297
+-static void op0_0x43(void)
+-{
+-	LD_R(z80.reg.b, z80.reg.e);
+-}
+-// LD B,H (1/4) [-,-,-,-] P297
+-static void op0_0x44(void)
+-{
+-	LD_R(z80.reg.b, z80.reg.h);
+-}
+-// LD B,L (1/4) [-,-,-,-] P297
+-static void op0_0x45(void)
+-{
+-	LD_R(z80.reg.b, z80.reg.l);
+-}
+-// LD B,(HL) (1/8) [-,-,-,-] P356
+-static void op0_0x46(void)
+-{
+-	LD_R_HL(z80.reg.b);
+-}
+-// LD B,A (1/4) [-,-,-,-] P297
+-static void op0_0x47(void)
+-{
+-	LD_R(z80.reg.b, z80.reg.a);
+-}
+-// LD C,B (1/4) [-,-,-,-] P297
+-static void op0_0x48(void)
+-{
+-	LD_R(z80.reg.c, z80.reg.b);
+-}
+-// LD C,C (1/4) [-,-,-,-] P297
+-static void op0_0x49(void)
+-{
+-	LD_R(z80.reg.c, z80.reg.c);
+-}
+-// LD C,D (1/4) [-,-,-,-] P297
+-static void op0_0x4a(void)
+-{
+-	LD_R(z80.reg.c, z80.reg.d);
+-}
+-// LD C,E (1/4) [-,-,-,-] P297
+-static void op0_0x4b(void)
+-{
+-	LD_R(z80.reg.c, z80.reg.e);
+-}
+-// LD C,H (1/4) [-,-,-,-] P297
+-static void op0_0x4c(void)
+-{
+-	LD_R(z80.reg.c, z80.reg.h);
+-}
+-// LD C,L (1/4) [-,-,-,-] P297
+-static void op0_0x4d(void)
+-{
+-	LD_R(z80.reg.c, z80.reg.l);
+-}
+-// LD C,(HL) (1/8) [-,-,-,-] P356
+-static void op0_0x4e(void)
+-{
+-	LD_R_HL(z80.reg.c);
+-}
+-// LD C,A (1/4) [-,-,-,-] P297
+-static void op0_0x4f(void)
+-{
+-	LD_R(z80.reg.c, z80.reg.a);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0x50 .. 0x5F
+-// emulation status:
+-// 0x50 : ut06_rom.c ok
+-// 0x51 : ut06_rom.c ok
+-// 0x52 : ut06_rom.c ok
+-// 0x53 : ut06_rom.c ok
+-// 0x54 : ut06_rom.c ok
+-// 0x55 : ut06_rom.c ok
+-// 0x56 : ut06_rom.c ok
+-// 0x57 : ut06_rom.c ok
+-// 0x58 : ut06_rom.c ok
+-// 0x59 : ut06_rom.c ok
+-// 0x5a : ut06_rom.c ok
+-// 0x5b : ut06_rom.c ok
+-// 0x5c : ut06_rom.c ok
+-// 0x5d : ut06_rom.c ok
+-// 0x5e : ut06_rom.c ok
+-// 0x5f : ut06_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// LD D,B (1/4) [-,-,-,-] P297
+-static void op0_0x50(void)
+-{
+-	LD_R(z80.reg.d, z80.reg.b);
+-}
+-// LD D,C (1/4) [-,-,-,-] P297
+-static void op0_0x51(void)
+-{
+-	LD_R(z80.reg.d, z80.reg.c);
+-}
+-// LD D,D (1/4) [-,-,-,-] P297
+-static void op0_0x52(void)
+-{
+-	LD_R(z80.reg.d, z80.reg.d);
+-}
+-// LD D,E (1/4) [-,-,-,-] P297
+-static void op0_0x53(void)
+-{
+-	LD_R(z80.reg.d, z80.reg.e);
+-}
+-// LD D,H (1/4) [-,-,-,-] P297
+-static void op0_0x54(void)
+-{
+-	LD_R(z80.reg.d, z80.reg.h);
+-}
+-// LD D,L (1/4) [-,-,-,-] P297
+-static void op0_0x55(void)
+-{
+-	LD_R(z80.reg.d, z80.reg.l);
+-}
+-// LD D,(HL) (1/8) [-,-,-,-] P356
+-static void op0_0x56(void)
+-{
+-	LD_R_HL(z80.reg.d);
+-}
+-// LD D,A (1/4) [-,-,-,-] P297
+-static void op0_0x57(void)
+-{
+-	LD_R(z80.reg.d, z80.reg.a);
+-}
+-// LD E,B (1/4) [-,-,-,-] P297
+-static void op0_0x58(void)
+-{
+-	LD_R(z80.reg.e, z80.reg.b);
+-}
+-// LD E,C (1/4) [-,-,-,-] P297
+-static void op0_0x59(void)
+-{
+-	LD_R(z80.reg.e, z80.reg.c);
+-}
+-// LD E,D (1/4) [-,-,-,-] P297
+-static void op0_0x5a(void)
+-{
+-	LD_R(z80.reg.e, z80.reg.d);
+-}
+-// LD E,E (1/4) [-,-,-,-] P297
+-static void op0_0x5b(void)
+-{
+-	LD_R(z80.reg.e, z80.reg.e);
+-}
+-// LD E,H (1/4) [-,-,-,-] P297
+-static void op0_0x5c(void)
+-{
+-	LD_R(z80.reg.e, z80.reg.h);
+-}
+-// LD E,L (1/4) [-,-,-,-] P297
+-static void op0_0x5d(void)
+-{
+-	LD_R(z80.reg.e, z80.reg.l);
+-}
+-// LD E,(HL) (1/8) [-,-,-,-] P356
+-static void op0_0x5e(void)
+-{
+-	LD_R_HL(z80.reg.e);
+-}
+-// LD E,A (1/4) [-,-,-,-] P297
+-static void op0_0x5f(void)
+-{
+-	LD_R(z80.reg.e, z80.reg.a);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0x60 .. 0x6F
+-// emulation status:
+-// 0x60 : ut06_rom.c ok
+-// 0x61 : ut06_rom.c ok
+-// 0x62 : ut06_rom.c ok
+-// 0x63 : ut06_rom.c ok
+-// 0x64 : ut06_rom.c ok
+-// 0x65 : ut06_rom.c ok
+-// 0x66 : ut06_rom.c ok
+-// 0x67 : ut06_rom.c ok
+-// 0x68 : ut06_rom.c ok
+-// 0x69 : ut06_rom.c ok
+-// 0x6a : ut06_rom.c ok
+-// 0x6b : ut06_rom.c ok
+-// 0x6c : ut06_rom.c ok
+-// 0x6d : ut06_rom.c ok
+-// 0x6e : ut06_rom.c ok
+-// 0x6f : ut06_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// LD H,B (1/4) [-,-,-,-] P297
+-static void op0_0x60(void)
+-{
+-	LD_R(z80.reg.h, z80.reg.b);
+-}
+-// LD H,C (1/4) [-,-,-,-] P297
+-static void op0_0x61(void)
+-{
+-	LD_R(z80.reg.h, z80.reg.c);
+-}
+-// LD H,D (1/4) [-,-,-,-] P297
+-static void op0_0x62(void)
+-{
+-	LD_R(z80.reg.h, z80.reg.d);
+-}
+-// LD H,E (1/4) [-,-,-,-] P297
+-static void op0_0x63(void)
+-{
+-	LD_R(z80.reg.h, z80.reg.e);
+-}
+-// LD H,H (1/4) [-,-,-,-] P297
+-static void op0_0x64(void)
+-{
+-	LD_R(z80.reg.h, z80.reg.h);
+-}
+-// LD H,L (1/4) [-,-,-,-] P297
+-static void op0_0x65(void)
+-{
+-	LD_R(z80.reg.h, z80.reg.l);
+-}
+-// LD H,(HL) (1/8) [-,-,-,-] P356
+-static void op0_0x66(void)
+-{
+-	LD_R_HL(z80.reg.h);
+-}
+-// LD H,A (1/4) [-,-,-,-] P297
+-static void op0_0x67(void)
+-{
+-	LD_R(z80.reg.h, z80.reg.a);
+-}
+-// LD L,B (1/4) [-,-,-,-] P297
+-static void op0_0x68(void)
+-{
+-	LD_R(z80.reg.l, z80.reg.b);
+-}
+-// LD L,C (1/4) [-,-,-,-] P297
+-static void op0_0x69(void)
+-{
+-	LD_R(z80.reg.l, z80.reg.c);
+-}
+-// LD L,D (1/4) [-,-,-,-] P297
+-static void op0_0x6a(void)
+-{
+-	LD_R(z80.reg.l, z80.reg.d);
+-}
+-// LD L,E (1/4) [-,-,-,-] P297
+-static void op0_0x6b(void)
+-{
+-	LD_R(z80.reg.l, z80.reg.e);
+-}
+-// LD L,H (1/4) [-,-,-,-] P297
+-static void op0_0x6c(void)
+-{
+-	LD_R(z80.reg.l, z80.reg.h);
+-}
+-// LD L,L (1/4) [-,-,-,-] P297
+-static void op0_0x6d(void)
+-{
+-	LD_R(z80.reg.l, z80.reg.l);
+-}
+-// LD L,(HL) (1/8) [-,-,-,-] P356
+-static void op0_0x6e(void)
+-{
+-	LD_R_HL(z80.reg.l);
+-}
+-// LD L,A (1/4) [-,-,-,-] P297
+-static void op0_0x6f(void)
+-{
+-	LD_R(z80.reg.l, z80.reg.a);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0x70 .. 0x7F
+-// emulation status:
+-// 0x70 : ut06_rom.c ok
+-// 0x71 : ut06_rom.c ok
+-// 0x72 : ut06_rom.c ok
+-// 0x73 : ut06_rom.c ok
+-// 0x74 : ut06_rom.c ok
+-// 0x75 : ut06_rom.c ok
+-// 0x76 : ut02_rom.c ok
+-// 0x77 : ut06_rom.c ok
+-// 0x78 : ut06_rom.c ok
+-// 0x79 : ut06_rom.c ok
+-// 0x7a : ut06_rom.c ok
+-// 0x7b : ut06_rom.c ok
+-// 0x7c : ut06_rom.c ok
+-// 0x7d : ut06_rom.c ok
+-// 0x7e : ut06_rom.c ok
+-// 0x7f : ut06_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// LD (HL),B (1/8) [-,-,-,-] P303
+-static void op0_0x70(void)
+-{
+-	LD_HL_R(z80.reg.b);
+-}
+-// LD (HL),C (1/8) [-,-,-,-] P303
+-static void op0_0x71(void)
+-{
+-	LD_HL_R(z80.reg.c);
+-}
+-// LD (HL),D (1/8) [-,-,-,-] P303
+-static void op0_0x72(void)
+-{
+-	LD_HL_R(z80.reg.d);
+-}
+-// LD (HL),E (1/8) [-,-,-,-] P303
+-static void op0_0x73(void)
+-{
+-	LD_HL_R(z80.reg.e);
+-}
+-// LD (HL),H (1/8) [-,-,-,-] P303
+-static void op0_0x74(void)
+-{
+-	LD_HL_R(z80.reg.h);
+-}
+-// LD (HL),L (1/8) [-,-,-,-] P303
+-static void op0_0x75(void)
+-{
+-	LD_HL_R(z80.reg.l);
+-}
+-// HALT (1/4) [-,-,-,-] P257
+-static void op0_0x76(void)
+-{
+-	if(z80.halt_mode == 0) {
+-		// first call
+-		z80.halt_mode = 1;
+-		z80.halt_skip = 0;
+-	}
+-	else {
+-		// wait until skip
+-		if(z80.halt_skip == 1) {
+-			// skip HALT
+-			z80.halt_mode = 0;
+-			z80.halt_skip = 0;
+-			z80.reg.pc++;
+-		}
+-
+-	}
+-}
+-// LD (HL),A (1/8) [-,-,-,-] P303
+-static void op0_0x77(void)
+-{
+-	LD_HL_R(z80.reg.a);
+-}
+-// LD A,B (1/4) [-,-,-,-] P297
+-static void op0_0x78(void)
+-{
+-	LD_R(z80.reg.a, z80.reg.b);
+-}
+-// LD A,C (1/4) [-,-,-,-] P297
+-static void op0_0x79(void)
+-{
+-	LD_R(z80.reg.a, z80.reg.c);
+-}
+-// LD A,D (1/4) [-,-,-,-] P297
+-static void op0_0x7a(void)
+-{
+-	LD_R(z80.reg.a, z80.reg.d);
+-}
+-// LD A,E (1/4) [-,-,-,-] P297
+-static void op0_0x7b(void)
+-{
+-	LD_R(z80.reg.a, z80.reg.e);
+-}
+-// LD A,H (1/4) [-,-,-,-] P297
+-static void op0_0x7c(void)
+-{
+-	LD_R(z80.reg.a, z80.reg.h);
+-}
+-// LD A,L (1/4) [-,-,-,-] P297
+-static void op0_0x7d(void)
+-{
+-	LD_R(z80.reg.a, z80.reg.l);
+-}
+-// LD A,(HL) (1/8) [-,-,-,-] P356
+-static void op0_0x7e(void)
+-{
+-	LD_R_HL(z80.reg.a);
+-}
+-// LD A,A (1/4) [-,-,-,-] P297
+-static void op0_0x7f(void)
+-{
+-	LD_R(z80.reg.a, z80.reg.a);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0x80 .. 0x8F
+-// emulation status:
+-// 0x80 : ut09_rom.c ok
+-// 0x81 : ut09_rom.c ok
+-// 0x82 : ut09_rom.c ok
+-// 0x83 : ut09_rom.c ok
+-// 0x84 : ut09_rom.c ok
+-// 0x85 : ut09_rom.c ok
+-// 0x86 : ut11_rom.c ok
+-// 0x87 : ut09_rom.c ok
+-// 0x88 : ut09_rom.c ok
+-// 0x89 : ut09_rom.c ok
+-// 0x8a : ut09_rom.c ok
+-// 0x8b : ut09_rom.c ok
+-// 0x8c : ut09_rom.c ok
+-// 0x8d : ut09_rom.c ok
+-// 0x8e : ut11_rom.c ok
+-// 0x8f : ut09_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// ADD A,B (1/4) [Z,0,H,C] P201
+-static void op0_0x80(void)
+-{
+-	ADD_R(z80.reg.b);
+-}
+-// ADD A,C (1/4) [Z,0,H,C] P201
+-static void op0_0x81(void)
+-{
+-	ADD_R(z80.reg.c);
+-}
+-// ADD A,D (1/4) [Z,0,H,C] P201
+-static void op0_0x82(void)
+-{
+-	ADD_R(z80.reg.d);
+-}
+-// ADD A,E (1/4) [Z,0,H,C] P201
+-static void op0_0x83(void)
+-{
+-	ADD_R(z80.reg.e);
+-}
+-// ADD A,H (1/4) [Z,0,H,C] P201
+-static void op0_0x84(void)
+-{
+-	ADD_R(z80.reg.h);
+-}
+-// ADD A,L (1/4) [Z,0,H,C] P201
+-static void op0_0x85(void)
+-{
+-	ADD_R(z80.reg.l);
+-}
+-// ADD A,(HL) (1/8) [Z,0,H,C] P194
+-static void op0_0x86(void)
+-{
+-	ADD_N16(z80.reg.hl);
+-}
+-// ADD A,A (1/4) [Z,0,H,C] P201
+-static void op0_0x87(void)
+-{
+-	ADD_R(z80.reg.a);
+-}
+-// ADC A,B (1/4) [Z,0,H,C] P190
+-static void op0_0x88(void)
+-{
+-	ADC_R(z80.reg.b);
+-}
+-// ADC A,C (1/4) [Z,0,H,C] P190
+-static void op0_0x89(void)
+-{
+-	ADC_R(z80.reg.c);
+-}
+-// ADC A,D (1/4) [Z,0,H,C] P190
+-static void op0_0x8a(void)
+-{
+-	ADC_R(z80.reg.d);
+-}
+-// ADC A,E (1/4) [Z,0,H,C] P190
+-static void op0_0x8b(void)
+-{
+-	ADC_R(z80.reg.e);
+-}
+-// ADC A,H (1/4) [Z,0,H,C] P190
+-static void op0_0x8c(void)
+-{
+-	ADC_R(z80.reg.h);
+-}
+-// ADC A,L (1/4) [Z,0,H,C] P190
+-static void op0_0x8d(void)
+-{
+-	ADC_R(z80.reg.l);
+-}
+-// ADC A,(HL) (1/8) [Z,0,H,C] P190
+-static void op0_0x8e(void)
+-{
+-	ADC_N16(z80.reg.hl);
+-}
+-// ADC A,A (1/4) [Z,0,H,C] P190
+-static void op0_0x8f(void)
+-{
+-	ADC_R(z80.reg.a);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0x90 .. 0x9F
+-// emulation status:
+-// 0x90 : ut09_rom.c ok
+-// 0x91 : ut09_rom.c ok
+-// 0x92 : ut09_rom.c ok
+-// 0x93 : ut09_rom.c ok
+-// 0x94 : ut09_rom.c ok
+-// 0x95 : ut09_rom.c ok
+-// 0x96 : ut11_rom.c ok
+-// 0x97 : ut09_rom.c ok
+-// 0x98 : ut09_rom.c ok
+-// 0x99 : ut09_rom.c ok
+-// 0x9a : ut09_rom.c ok
+-// 0x9b : ut09_rom.c ok
+-// 0x9c : ut09_rom.c ok
+-// 0x9d : ut09_rom.c ok
+-// 0x9e : ut11_rom.c ok
+-// 0x9f : ut09_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// SUB B (1/4) [Z,1,H,C] P434
+-static void op0_0x90(void)
+-{
+-	SUB_R(z80.reg.b);
+-}
+-// SUB C (1/4) [Z,1,H,C] P434
+-static void op0_0x91(void)
+-{
+-	SUB_R(z80.reg.c);
+-}
+-// SUB D (1/4) [Z,1,H,C] P434
+-static void op0_0x92(void)
+-{
+-	SUB_R(z80.reg.d);
+-}
+-// SUB E (1/4) [Z,1,H,C] P434
+-static void op0_0x93(void)
+-{
+-	SUB_R(z80.reg.e);
+-}
+-// SUB H (1/4) [Z,1,H,C] P434
+-static void op0_0x94(void)
+-{
+-	SUB_R(z80.reg.h);
+-}
+-// SUB L (1/4) [Z,1,H,C] P434
+-static void op0_0x95(void)
+-{
+-	SUB_R(z80.reg.l);
+-}
+-// SUB (HL) (1/8) [Z,1,H,C] P434
+-static void op0_0x96(void)
+-{
+-	SUB_N16(z80.reg.hl);
+-}
+-// SUB A (1/4) [Z,1,H,C] P434
+-static void op0_0x97(void)
+-{
+-	SUB_R(z80.reg.a);
+-}
+-// SBC A,B (1/4) [Z,1,H,C] P420
+-static void op0_0x98(void)
+-{
+-	SBC_R(z80.reg.b);
+-}
+-// SBC A,C (1/4) [Z,1,H,C] P420
+-static void op0_0x99(void)
+-{
+-	SBC_R(z80.reg.c);
+-}
+-// SBC A,D (1/4) [Z,1,H,C] P420
+-static void op0_0x9a(void)
+-{
+-	SBC_R(z80.reg.d);
+-}
+-// SBC A,E (1/4) [Z,1,H,C] P420
+-static void op0_0x9b(void)
+-{
+-	SBC_R(z80.reg.e);
+-}
+-// SBC A,H (1/4) [Z,1,H,C] P420
+-static void op0_0x9c(void)
+-{
+-	SBC_R(z80.reg.h);
+-}
+-// SBC A,L (1/4) [Z,1,H,C] P420
+-static void op0_0x9d(void)
+-{
+-	SBC_R(z80.reg.l);
+-}
+-// SBC A,(HL) (1/8) [Z,1,H,C] P420
+-static void op0_0x9e(void)
+-{
+-	SBC_N16(z80.reg.hl);
+-}
+-// SBC A,A (1/4) [Z,1,H,C] P420
+-static void op0_0x9f(void)
+-{
+-	SBC_R(z80.reg.a);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0xa0 .. 0xaF
+-// emulation status:
+-// 0xa0 : ut09_rom.c ok
+-// 0xa1 : ut09_rom.c ok
+-// 0xa2 : ut09_rom.c ok
+-// 0xa3 : ut09_rom.c ok
+-// 0xa4 : ut09_rom.c ok
+-// 0xa5 : ut09_rom.c ok
+-// 0xa6 : ut11_rom.c ok
+-// 0xa7 : ut09_rom.c ok
+-// 0xa8 : ut09_rom.c ok
+-// 0xa9 : ut09_rom.c ok
+-// 0xaa : ut09_rom.c ok
+-// 0xab : ut09_rom.c ok
+-// 0xac : ut09_rom.c ok
+-// 0xad : ut09_rom.c ok
+-// 0xae : ut11_rom.c ok
+-// 0xaf : ut09_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// AND B (1/4) [Z,0,1,0] P209
+-static void op0_0xa0(void)
+-{
+-	AND_R(z80.reg.b);
+-}
+-// AND C (1/4) [Z,0,1,0] P209
+-static void op0_0xa1(void)
+-{
+-	AND_R(z80.reg.c);
+-}
+-// AND D (1/4) [Z,0,1,0] P209
+-static void op0_0xa2(void)
+-{
+-	AND_R(z80.reg.d);
+-}
+-// AND E (1/4) [Z,0,1,0] P209
+-static void op0_0xa3(void)
+-{
+-	AND_R(z80.reg.e);
+-}
+-// AND H (1/4) [Z,0,1,0] P209
+-static void op0_0xa4(void)
+-{
+-	AND_R(z80.reg.h);
+-}
+-// AND L (1/4) [Z,0,1,0] P209
+-static void op0_0xa5(void)
+-{
+-	AND_R(z80.reg.l);
+-}
+-// AND (HL) (1/8) [Z,0,1,0] P209
+-static void op0_0xa6(void)
+-{
+-	AND_M(z80.reg.hl);
+-}
+-// AND A (1/4) [Z,0,1,0] P209
+-static void op0_0xa7(void)
+-{
+-	AND_R(z80.reg.a);
+-}
+-// XOR B (1/4) [Z,0,0,0] P436
+-static void op0_0xa8(void)
+-{
+-	XOR_R(z80.reg.b);
+-}
+-// XOR C (1/4) [Z,0,0,0] P436
+-static void op0_0xa9(void)
+-{
+-	XOR_R(z80.reg.c);
+-}
+-// XOR D (1/4) [Z,0,0,0] P436
+-static void op0_0xaa(void)
+-{
+-	XOR_R(z80.reg.d);
+-}
+-// XOR E (1/4) [Z,0,0,0] P436
+-static void op0_0xab(void)
+-{
+-	XOR_R(z80.reg.e);
+-}
+-// XOR H (1/4) [Z,0,0,0] P436
+-static void op0_0xac(void)
+-{
+-	XOR_R(z80.reg.h);
+-}
+-// XOR L (1/4) [Z,0,0,0] P436
+-static void op0_0xad(void)
+-{
+-	XOR_R(z80.reg.l);
+-}
+-// XOR (HL) (1/8) [Z,0,0,0] P436
+-static void op0_0xae(void)
+-{
+-	XOR_M(z80.reg.hl);
+-}
+-// XOR A (1/4) [Z,0,0,0] P436
+-static void op0_0xaf(void)
+-{
+-	XOR_R(z80.reg.a);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0xb0 .. 0xbF
+-// emulation status:
+-// 0xb0 : ut09_rom.c ok
+-// 0xb1 : ut09_rom.c ok
+-// 0xb2 : ut09_rom.c ok
+-// 0xb3 : ut09_rom.c ok
+-// 0xb4 : ut09_rom.c ok
+-// 0xb5 : ut09_rom.c ok
+-// 0xb6 : ut11_rom.c ok
+-// 0xb7 : ut09_rom.c ok
+-// 0xb8 : ut09_rom.c ok
+-// 0xb9 : ut09_rom.c ok
+-// 0xba : ut09_rom.c ok
+-// 0xbb : ut09_rom.c ok
+-// 0xbc : ut09_rom.c ok
+-// 0xbd : ut09_rom.c ok
+-// 0xbe : ut11_rom.c ok
+-// 0xbf : ut09_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// OR B (1/4) [Z,0,0,0] P360
+-static void op0_0xb0(void)
+-{
+-	OR_R(z80.reg.b);
+-}
+-// OR C (1/4) [Z,0,0,0] P360
+-static void op0_0xb1(void)
+-{
+-	OR_R(z80.reg.c);
+-}
+-// OR D (1/4) [Z,0,0,0] P360
+-static void op0_0xb2(void)
+-{
+-	OR_R(z80.reg.d);
+-}
+-// OR E (1/4) [Z,0,0,0] P360
+-static void op0_0xb3(void)
+-{
+-	OR_R(z80.reg.e);
+-}
+-// OR H (1/4) [Z,0,0,0] P360
+-static void op0_0xb4(void)
+-{
+-	OR_R(z80.reg.h);
+-}
+-// OR L (1/4) [Z,0,0,0] P360
+-static void op0_0xb5(void)
+-{
+-	OR_R(z80.reg.l);
+-}
+-// OR (HL) (1/8) [Z,0,0,0] P360
+-static void op0_0xb6(void)
+-{
+-	OR_M(z80.reg.hl);
+-}
+-// OR A (1/4) [Z,0,0,0] P360
+-static void op0_0xb7(void)
+-{
+-	OR_R(z80.reg.a);
+-}
+-// CP B (1/4) [Z,1,H,C] P225
+-static void op0_0xb8(void)
+-{
+-	CP_R(z80.reg.b);
+-}
+-// CP C (1/4) [Z,1,H,C] P225
+-static void op0_0xb9(void)
+-{
+-	CP_R(z80.reg.c);
+-}
+-// CP D (1/4) [Z,1,H,C] P225
+-static void op0_0xba(void)
+-{
+-	CP_R(z80.reg.d);
+-}
+-// CP E (1/4) [Z,1,H,C] P225
+-static void op0_0xbb(void)
+-{
+-	CP_R(z80.reg.e);
+-}
+-// CP H (1/4) [Z,1,H,C] P225
+-static void op0_0xbc(void)
+-{
+-	CP_R(z80.reg.h);
+-}
+-// CP L (1/4) [Z,1,H,C] P225
+-static void op0_0xbd(void)
+-{
+-	CP_R(z80.reg.l);
+-}
+-// CP (HL) (1/8) [Z,1,H,C] P225
+-static void op0_0xbe(void)
+-{
+-	CP_A16(z80.reg.hl);
+-}
+-// CP A (1/4) [Z,1,H,C] P225
+-static void op0_0xbf(void)
+-{
+-	CP_R(z80.reg.a);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0xc0 .. 0xcF
+-// emulation status:
+-// 0xc0 : ut07_rom.c ok
+-// 0xc1 : ut08_rom.c ok
+-// 0xc2 : ut07_rom.c ok
+-// 0xc3 : ut07_rom.c ok
+-// 0xc4 : ut07_rom.c ok
+-// 0xc5 : ut08_rom.c ok
+-// 0xc6 : ut04_rom.c ok
+-// 0xc7 : ut07_rom.c ok
+-// 0xc8 : ut07_rom.c ok
+-// 0xc9 : ut07_rom.c ok
+-// 0xca : ut07_rom.c ok
+-// 0xcb : ut09_rom.c / ut10_rom.c / ut11_rom.c ok
+-// 0xcc : ut07_rom.c ok
+-// 0xcd : ut07_rom.c ok
+-// 0xce : ut04_rom.c ok
+-// 0xcf : ut07_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// RET NZ (1/20) [-,-,-,-] P390
+-static void op0_0xc0(void)
+-{
+-	RET_NZ(z80.reg.sp);
+-}
+-// POP BC (1/12) [-,-,-,-] P373
+-static void op0_0xc1(void)
+-{
+-	POP_DR(z80.reg.bc);
+-}
+-// JP NZ,nn (3/16) [-,-,-,-] P282
+-static void op0_0xc2(void)
+-{
+-	JP_NZ((z80.reg.pc+1));
+-}
+-// JP nn (3/16) [-,-,-,-] P89
+-static void op0_0xc3(void)
+-{
+-	JP_NN((z80.reg.pc+1));
+-}
+-// CALL NZ,nn (3/24) [-,-,-,-] P219
+-static void op0_0xc4(void)
+-{
+-	CALL_NZ((z80.reg.pc+1));
+-}
+-// PUSH BC (1/16) [-,-,-,-] P379
+-static void op0_0xc5(void)
+-{
+-	PUSH_DR(z80.reg.bc);
+-}
+-// ADD A,n (2/8) [Z,0,H,C] P200
+-static void op0_0xc6(void)
+-{
+-	ADD_N8((z80.reg.pc+1));
+-}
+-// RST 00H (1/16) [-,-,-,-] P418
+-static void op0_0xc7(void)
+-{
+-	RST((z80.reg.pc+1), 0x00);
+-}
+-// RET Z (1/20) [-,-,-,-] P390
+-static void op0_0xc8(void)
+-{
+-	RET_Z(z80.reg.sp);
+-}
+-// RET (1/16) [-,-,-,-] P388
+-static void op0_0xc9(void)
+-{
+-	RET(z80.reg.sp);
+-}
+-// JP Z,nn (3/16) [-,-,-,-] P282
+-static void op0_0xca(void)
+-{
+-	JP_Z((z80.reg.pc+1));
+-}
+-// 16bit Opcode 0xCB..
+-static void op0_0xcb(void)
+-{
+-	// nothing to do here (handelt by z80_opcode_table_cb.c)
+-}
+-// CALL Z,nn (3/24) [-,-,-,-] P219
+-static void op0_0xcc(void)
+-{
+-	CALL_Z((z80.reg.pc+1));
+-}
+-// CALL nn (3/24) [-,-,-,-] P222
+-static void op0_0xcd(void)
+-{
+-	CALL_N16((z80.reg.pc+1));
+-}
+-// ADC A,n (2/8) [Z,0,H,C] P190
+-static void op0_0xce(void)
+-{
+-	ADC_N8((z80.reg.pc+1));
+-}
+-// RST 08H (1/16) [-,-,-,-] P418
+-static void op0_0xcf(void)
+-{
+-	RST((z80.reg.pc+1), 0x08);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0xd0 .. 0xdF
+-// emulation status:
+-// 0xd0 : ut07_rom.c ok
+-// 0xd1 : ut08_rom.c ok
+-// 0xd2 : ut07_rom.c ok
+-// 0xd3 : not used in Gameboy
+-// 0xd4 : ut07_rom.c ok
+-// 0xd5 : ut08_rom.c ok
+-// 0xd6 : ut04_rom.c ok
+-// 0xd7 : ut07_rom.c ok
+-// 0xd8 : ut07_rom.c ok
+-// 0xd9 : ut07_rom.c ok
+-// 0xda : ut07_rom.c ok
+-// 0xdb : not used in Gameboy
+-// 0xdc : ut07_rom.c ok
+-// 0xdd : not used in Gameboy
+-// 0xde : ut04_rom.c ok
+-// 0xdf : ut07_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// RET NC (1/20) [-,-,-,-] P390
+-static void op0_0xd0(void)
+-{
+-	RET_NC(z80.reg.sp);
+-}
+-// POP DE (1/12) [-,-,-,-] P373
+-static void op0_0xd1(void)
+-{
+-	POP_DR(z80.reg.de);
+-}
+-// JP NC,nn (3/16) [-,-,-,-] P282
+-static void op0_0xd2(void)
+-{
+-	JP_NC((z80.reg.pc+1));
+-}
+-// 0xD3
+-static void op0_0xd3(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// CALL NC,nn (3/24) [-,-,-,-] P219
+-static void op0_0xd4(void)
+-{
+-	CALL_NC((z80.reg.pc+1));
+-}
+-// PUSH DE (1/16) [-,-,-,-] P379
+-static void op0_0xd5(void)
+-{
+-	PUSH_DR(z80.reg.de);
+-}
+-// SUB n (2/8) [Z,1,H,C] P434
+-static void op0_0xd6(void)
+-{
+-	SUB_N8((z80.reg.pc+1));
+-}
+-// RST 10H (1/16) [-,-,-,-] P418
+-static void op0_0xd7(void)
+-{
+-	RST((z80.reg.pc+1), 0x10);
+-}
+-// RET C (1/20) [-,-,-,-] P390
+-static void op0_0xd8(void)
+-{
+-	RET_C(z80.reg.sp);
+-}
+-// RETI (1/16) [-,-,-,-] (Gameboy spec.)
+-static void op0_0xd9(void)
+-{
+-	RETI(z80.reg.sp);
+-}
+-// JP C,nn (3/16) [-,-,-,-] P282
+-static void op0_0xda(void)
+-{
+-	JP_C((z80.reg.pc+1));
+-}
+-// 0xDB
+-static void op0_0xdb(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// CALL C,nn (3/24) [-,-,-,-] P219
+-static void op0_0xdc(void)
+-{
+-	CALL_C((z80.reg.pc+1));
+-}
+-// 0xDD
+-static void op0_0xdd(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// SBC A,n (2/8) [Z,1,H,C] P420
+-static void op0_0xde(void)
+-{
+-	SBC_N8((z80.reg.pc+1));
+-}
+-// RST 18H (1/16) [-,-,-,-] P418
+-static void op0_0xdf(void)
+-{
+-	RST((z80.reg.pc+1), 0x18);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0xe0 .. 0xeF
+-// emulation status:
+-// 0xe0 : ut08_rom.c ok
+-// 0xe1 : ut08_rom.c ok
+-// 0xe2 : ut08_rom.c ok
+-// 0xe3 : not used in Gameboy
+-// 0xe4 : not used in Gameboy
+-// 0xe5 : ut08_rom.c ok
+-// 0xe6 : ut04_rom.c ok
+-// 0xe7 : ut07_rom.c ok
+-// 0xe8 : ut03_rom.c ok
+-// 0xe9 : ?
+-// 0xea : ut08_rom.c ok
+-// 0xeb : not used in Gameboy
+-// 0xec : not used in Gameboy
+-// 0xed : not used in Gameboy
+-// 0xee : ut04_rom.c ok
+-// 0xef : ut07_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// LDH (n),A (2/12) [-,-,-,-] (Gameboy spec.)
+-static void op0_0xe0(void)
+-{
+-	LDH_N8_A((z80.reg.pc+1));
+-}
+-// POP HL (1/12) [-,-,-,-] P373
+-static void op0_0xe1(void)
+-{
+-	POP_DR(z80.reg.hl);
+-}
+-// LDH (C),A (1/8) [-,-,-,-] (Gameboy spec.)
+-static void op0_0xe2(void)
+-{
+-	LDH_C;
+-}
+-// 0xE3
+-static void op0_0xe3(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// 0xE4
+-static void op0_0xe4(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// PUSH HL (1/16) [-,-,-,-] P379
+-static void op0_0xe5(void)
+-{
+-	PUSH_DR(z80.reg.hl);
+-}
+-// AND n (2/8) [Z,0,1,0] P209
+-static void op0_0xe6(void)
+-{
+-	AND_N8((z80.reg.pc+1));
+-}
+-// RST 20H (1/16) [-,-,-,-] P418
+-static void op0_0xe7(void)
+-{
+-	RST((z80.reg.pc+1), 0x20);
+-}
+-// ADD SP,n (2/16) [0,0,H,C] (Gameboy spec.)
+-static void op0_0xe8(void)
+-{
+-	ADD_SP_N8((z80.reg.pc+1));
+-}
+-// JP HL (1/4) [-,-,-,-] P285
+-static void op0_0xe9(void)
+-{
+-	JP_HL;
+-}
+-// LD (nn),A (3/16) [-,-,-,-] (Gameboy spec.)
+-static void op0_0xea(void)
+-{
+-	LD_N16_A((z80.reg.pc+1));
+-}
+-// 0xEB
+-static void op0_0xeb(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// 0xEC
+-static void op0_0xec(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// 0xED
+-static void op0_0xed(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// XOR n (2/8) [Z,0,0,0] P436
+-static void op0_0xee(void)
+-{
+-	XOR_N8((z80.reg.pc+1));
+-}
+-// RST 28H (1/16) [-,-,-,-] P418
+-static void op0_0xef(void)
+-{
+-	RST((z80.reg.pc+1), 0x28);
+-}
+-
+-//================================================
+-// Z80 opcodes: 0xf0 .. 0xfF
+-// emulation status:
+-// 0xf0 : ut08_rom.c ok
+-// 0xf1 : ut08_rom.c ok
+-// 0xf2 : ut08_rom.c ok
+-// 0xf3 : ut02_rom.c ok
+-// 0xf4 : not used in Gameboy
+-// 0xf5 : ut08_rom.c ok
+-// 0xf6 : ut04_rom.c ok
+-// 0xf7 : ut07_rom.c ok
+-// 0xf8 : ut03_rom.c ok
+-// 0xf9 : ut03_rom.c ok
+-// 0xfa : ut08_rom.c ok
+-// 0xfb : ut02_rom.c ok
+-// 0xfc : not used in Gameboy
+-// 0xfd : not used in Gameboy
+-// 0xfe : ut04_rom.c ok
+-// 0xff : ut07_rom.c ok
+-//================================================
+-
+-//------------------------------------------------
+-// command (length/cycles) [Z,N,H,C]
+-// LDH A,(n) (2/12) [-,-,-,-] (Gameboy spec.)
+-static void op0_0xf0(void)
+-{
+-	LDH_A_N8((z80.reg.pc+1));
+-}
+-// POP AF (1/12) [-,-,-,-] P373
+-static void op0_0xf1(void)
+-{
+-	POP_DR(z80.reg.af);
+-	z80.reg.f &= FLAG_MASK; // bit0..3 always read as Lo
+-}
+-// LDH A,(C) (1/8) [-,-,-,-] (Gameboy spec.)
+-static void op0_0xf2(void)
+-{
+-	LDH_A;
+-}
+-// DI (1/4) [-,-,-,-] P244
+-static void op0_0xf3(void)
+-{
+-	DI;
+-}
+-// 0xF4
+-static void op0_0xf4(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// PUSH AF (1/16) [-,-,-,-] P379
+-static void op0_0xf5(void)
+-{
+-	PUSH_DR(z80.reg.af);
+-}
+-// OR n (2/8) [Z,0,0,0] P360
+-static void op0_0xf6(void)
+-{
+-	OR_N8((z80.reg.pc+1));
+-}
+-// RST 30H (1/16) [-,-,-,-] P418
+-static void op0_0xf7(void)
+-{
+-	RST((z80.reg.pc+1), 0x30);
+-}
+-// LD HL,SP+(n) (2/12) [0,0,H,C] (Gameboy spec.)
+-static void op0_0xf8(void)
+-{
+-	LD_HL_SP_N8((z80.reg.pc+1));
+-}
+-// LD SP,HL (1/8) [-,-,-,-] P345
+-static void op0_0xf9(void)
+-{
+-	LD_R(z80.reg.sp, z80.reg.hl);
+-}
+-// LD A,(nn) (3/16) [-,-,-,-] (Gameboy spec.)
+-static void op0_0xfa(void)
+-{
+-	LD_A_N16((z80.reg.pc+1));
+-}
+-// EI (1/4) [-,-,-,-] P247
+-static void op0_0xfb(void)
+-{
+-	EI;
+-}
+-// 0xFC
+-static void op0_0xfc(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// 0xFD
+-static void op0_0xfd(void)
+-{
+-	OPCODE_ERR; // not used in Gameboy
+-}
+-// CP n (2/8) [Z,1,H,C] P225
+-static void op0_0xfe(void)
+-{
+-	CP_N8((z80.reg.pc+1));
+-}
+-// RST 38H (1/16) [-,-,-,-] P418
+-static void op0_0xff(void)
+-{
+-	RST((z80.reg.pc+1), 0x38);
+-}
+-//------------------------------------------------
+-
+-
+-//------------------------------------------------
+-// to avoid huge switch case list for all opcodes
+-// a table is used with a pointer to all 256 possible functions
+-//------------------------------------------------
+-
+-// opcode table
+-static void (*opcode0 [256])(void)={ // opcodes (0x00 .. 0xFF)
+-	op0_0x00,op0_0x01,op0_0x02,op0_0x03,op0_0x04,op0_0x05,op0_0x06,op0_0x07,op0_0x08,op0_0x09,op0_0x0a,op0_0x0b,op0_0x0c,op0_0x0d,op0_0x0e,op0_0x0f,
+-	op0_0x10,op0_0x11,op0_0x12,op0_0x13,op0_0x14,op0_0x15,op0_0x16,op0_0x17,op0_0x18,op0_0x19,op0_0x1a,op0_0x1b,op0_0x1c,op0_0x1d,op0_0x1e,op0_0x1f,
+-	op0_0x20,op0_0x21,op0_0x22,op0_0x23,op0_0x24,op0_0x25,op0_0x26,op0_0x27,op0_0x28,op0_0x29,op0_0x2a,op0_0x2b,op0_0x2c,op0_0x2d,op0_0x2e,op0_0x2f,
+-	op0_0x30,op0_0x31,op0_0x32,op0_0x33,op0_0x34,op0_0x35,op0_0x36,op0_0x37,op0_0x38,op0_0x39,op0_0x3a,op0_0x3b,op0_0x3c,op0_0x3d,op0_0x3e,op0_0x3f,
+-	op0_0x40,op0_0x41,op0_0x42,op0_0x43,op0_0x44,op0_0x45,op0_0x46,op0_0x47,op0_0x48,op0_0x49,op0_0x4a,op0_0x4b,op0_0x4c,op0_0x4d,op0_0x4e,op0_0x4f,
+-	op0_0x50,op0_0x51,op0_0x52,op0_0x53,op0_0x54,op0_0x55,op0_0x56,op0_0x57,op0_0x58,op0_0x59,op0_0x5a,op0_0x5b,op0_0x5c,op0_0x5d,op0_0x5e,op0_0x5f,
+-	op0_0x60,op0_0x61,op0_0x62,op0_0x63,op0_0x64,op0_0x65,op0_0x66,op0_0x67,op0_0x68,op0_0x69,op0_0x6a,op0_0x6b,op0_0x6c,op0_0x6d,op0_0x6e,op0_0x6f,
+-	op0_0x70,op0_0x71,op0_0x72,op0_0x73,op0_0x74,op0_0x75,op0_0x76,op0_0x77,op0_0x78,op0_0x79,op0_0x7a,op0_0x7b,op0_0x7c,op0_0x7d,op0_0x7e,op0_0x7f,
+-	op0_0x80,op0_0x81,op0_0x82,op0_0x83,op0_0x84,op0_0x85,op0_0x86,op0_0x87,op0_0x88,op0_0x89,op0_0x8a,op0_0x8b,op0_0x8c,op0_0x8d,op0_0x8e,op0_0x8f,
+-	op0_0x90,op0_0x91,op0_0x92,op0_0x93,op0_0x94,op0_0x95,op0_0x96,op0_0x97,op0_0x98,op0_0x99,op0_0x9a,op0_0x9b,op0_0x9c,op0_0x9d,op0_0x9e,op0_0x9f,
+-	op0_0xa0,op0_0xa1,op0_0xa2,op0_0xa3,op0_0xa4,op0_0xa5,op0_0xa6,op0_0xa7,op0_0xa8,op0_0xa9,op0_0xaa,op0_0xab,op0_0xac,op0_0xad,op0_0xae,op0_0xaf,
+-	op0_0xb0,op0_0xb1,op0_0xb2,op0_0xb3,op0_0xb4,op0_0xb5,op0_0xb6,op0_0xb7,op0_0xb8,op0_0xb9,op0_0xba,op0_0xbb,op0_0xbc,op0_0xbd,op0_0xbe,op0_0xbf,
+-	op0_0xc0,op0_0xc1,op0_0xc2,op0_0xc3,op0_0xc4,op0_0xc5,op0_0xc6,op0_0xc7,op0_0xc8,op0_0xc9,op0_0xca,op0_0xcb,op0_0xcc,op0_0xcd,op0_0xce,op0_0xcf,
+-	op0_0xd0,op0_0xd1,op0_0xd2,op0_0xd3,op0_0xd4,op0_0xd5,op0_0xd6,op0_0xd7,op0_0xd8,op0_0xd9,op0_0xda,op0_0xdb,op0_0xdc,op0_0xdd,op0_0xde,op0_0xdf,
+-	op0_0xe0,op0_0xe1,op0_0xe2,op0_0xe3,op0_0xe4,op0_0xe5,op0_0xe6,op0_0xe7,op0_0xe8,op0_0xe9,op0_0xea,op0_0xeb,op0_0xec,op0_0xed,op0_0xee,op0_0xef,
+-	op0_0xf0,op0_0xf1,op0_0xf2,op0_0xf3,op0_0xf4,op0_0xf5,op0_0xf6,op0_0xf7,op0_0xf8,op0_0xf9,op0_0xfa,op0_0xfb,op0_0xfc,op0_0xfd,op0_0xfe,op0_0xff
+-};
+-
+-
+-
++#ifndef Z80_OPCODE_FUNC_H_
++#define Z80_OPCODE_FUNC_H_
++
++//--------------------------------------------------------------
++// File     : z80_opcode.c
++// Datum    : 01.04.2018
++// Version  : 1.0
++// Autor    : UB
++// Web      : http://mikrocontroller.bplaced.net
++// CPU      : STM32F746
++// IDE      : OpenSTM32
++// GCC      : 4.9 2015q2
++// Module   : CubeHAL
++// Funktion : handles Z80 opcodes (Gameboy version)
++//--------------------------------------------------------------
++
++
++#include "z80_opcode.h"
++
++#define opcode_attr __attribute__((always_inline))
++
++
++// page numbers from rodnay zaks z80 book
++
++//==============================================
++// unit test roms :
++// cpu_instr.zip from (http://gbdev.gg8.se/files/roms/blargg-gb-tests/)
++// rom: ut01_rom.c -> passed (special)
++// rom: ut02_rom.c -> passed (ISR)
++// rom: ut03_rom.c -> passed (OP sp,hl)
++// rom: ut04_rom.c -> passed (OP r,imm)
++// rom: ut05_rom.c -> passed (OP rp)
++// rom: ut06_rom.c -> passed (LD r,r)
++// rom: ut07_rom.c -> passed (JP, CALL)
++// rom: ut08_rom.c -> passed (misc)
++// rom: ut09_rom.c -> passed (OP r,r)
++// rom: ut10_rom.c -> passed (bit ops)
++// rom: ut11_rom.c -> passed (OP a,(hl))
++//==============================================
++
++
++//================================================
++// Z80 opcodes: 0x00 .. 0x0F
++// emulation status:
++// 0x00 : ut09_rom.c ok
++// 0x01 : ut08_rom.c ok
++// 0x02 : ut11_rom.c ok
++// 0x03 : ut05_rom.c ok
++// 0x04 : ut09_rom.c ok
++// 0x05 : ut09_rom.c ok
++// 0x06 : ut04_rom.c ok
++// 0x07 : ut09_rom.c ok
++// 0x08 : ut08_rom.c ok
++// 0x09 : ut05_rom.c ok
++// 0x0a : ut11_rom.c ok
++// 0x0b : ut05_rom.c ok
++// 0x0c : ut09_rom.c ok
++// 0x0d : ut09_rom.c ok
++// 0x0e : ut04_rom.c ok
++// 0x0f : ut09_rom.c ok
++//================================================
++
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// NOP (1/4) [-,-,-,-]
++opcode_attr static inline void op0_0x00(void)
++{
++	NOP;
++}
++// LD BC,nn (3/12) [-,-,-,-] P293
++opcode_attr static inline void op0_0x01(void)
++{
++	LD_DD_N16(z80.reg.bc, (z80.reg.pc+1));
++}
++// LD (BC),A (1/8) [-,-,-,-] P299
++opcode_attr static inline void op0_0x02(void)
++{
++	LD_A16(z80.reg.bc);
++}
++// INC BC (1/8) [-,-,-,-] P265
++opcode_attr static inline void op0_0x03(void)
++{
++	INC_DR(z80.reg.bc);
++}
++// INC B (1/4) [Z,0,H,-] P264
++opcode_attr static inline void op0_0x04(void)
++{
++	INC_R(z80.reg.b);
++}
++// DEC B (1/4) [Z,1,H,-] P238
++opcode_attr static inline void op0_0x05(void)
++{
++	DEC_R(z80.reg.b);
++}
++// LD B,n (2/8) [-,-,-,-] P295
++opcode_attr static inline void op0_0x06(void)
++{
++	LD_N8(z80.reg.b, (z80.reg.pc+1));
++}
++// RLCA (1/4) [0,0,0,C] P399
++opcode_attr static inline void op0_0x07(void)
++{
++	RLCA(z80.reg.a);
++}
++// LD (nn),SP (3/20) [-,-,-,-] (Gameboy spec.)
++opcode_attr static inline void op0_0x08(void)
++{
++	LD_N16_SP((z80.reg.pc+1));
++}
++// ADD HL,BC (1/8) [-,0,H,C] P203
++opcode_attr static inline void op0_0x09(void)
++{
++	ADD_DD(z80.reg.bc);
++}
++// LD A,(BC) (1/8) [-,-,-,-] P329
++opcode_attr static inline void op0_0x0a(void)
++{
++	LD_M(z80.reg.bc);
++}
++// DEC BC (1/8) [-,-,-,-] P240
++opcode_attr static inline void op0_0x0b(void)
++{
++	DEC_DR(z80.reg.bc);
++}
++// INC C (1/4) [Z,0,H,-] P264
++opcode_attr static inline void op0_0x0c(void)
++{
++	INC_R(z80.reg.c);
++}
++// DEC C (1/4) [Z,1,H,-] P238
++opcode_attr static inline void op0_0x0d(void)
++{
++	DEC_R(z80.reg.c);
++}
++// LD C,n (2/8) [-,-,-,-] P295
++opcode_attr static inline void op0_0x0e(void)
++{
++	LD_N8(z80.reg.c, (z80.reg.pc+1));
++}
++// RRCA (1/4) [0,0,0,C] P415
++opcode_attr static inline void op0_0x0f(void)
++{
++	RRCA(z80.reg.a);
++}
++
++//================================================
++// Z80 opcodes: 0x10 .. 0x1F
++// emulation status:
++// 0x10 : opcode STOP can't be tested
++// 0x11 : ut08_rom.c ok
++// 0x12 : ut11_rom.c ok
++// 0x13 : ut05_rom.c ok
++// 0x14 : ut09_rom.c ok
++// 0x15 : ut09_rom.c ok
++// 0x16 : ut04_rom.c ok
++// 0x17 : ut09_rom.c ok
++// 0x18 : ut07_rom.c ok
++// 0x19 : ut05_rom.c ok
++// 0x1a : ut11_rom.c ok
++// 0x1b : ut05_rom.c ok
++// 0x1c : ut09_rom.c ok
++// 0x1d : ut09_rom.c ok
++// 0x1e : ut04_rom.c ok
++// 0x1f : ut09_rom.c ok
++//================================================
++
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// STOP 0 (2/4) [-,-,-,-] (Gameboy spec)
++opcode_attr static inline void op0_0x10(void)
++{
++	STOP;
++}
++// LD DE,nn (3/12) [-,-,-,-] P293
++opcode_attr static inline void op0_0x11(void)
++{
++	LD_DD_N16(z80.reg.de, (z80.reg.pc+1));
++}
++// LD (DE),A (1/8) [-,-,-,-] P300
++opcode_attr static inline void op0_0x12(void)
++{
++	LD_A16(z80.reg.de);
++}
++// INC DE (1/8) [-,-,-,-] P265
++opcode_attr static inline void op0_0x13(void)
++{
++	INC_DR(z80.reg.de);
++}
++// INC D (1/4) [Z,0,H,-] P264
++opcode_attr static inline void op0_0x14(void)
++{
++	INC_R(z80.reg.d);
++}
++// DEC D (1/4) [Z,1,H,-] P238
++opcode_attr static inline void op0_0x15(void)
++{
++	DEC_R(z80.reg.d);
++}
++// LD D,n (2/8) [-,-,-,-] P295
++opcode_attr static inline void op0_0x16(void)
++{
++	LD_N8(z80.reg.d, (z80.reg.pc+1));
++}
++// RLA (1/4) [0,0,0,C] P398
++opcode_attr static inline void op0_0x17(void)
++{
++	RLA(z80.reg.a);
++}
++// JR n (2/12) [-,-,-,-] P290
++opcode_attr static inline void op0_0x18(void)
++{
++	JR_N8((z80.reg.pc+1));
++}
++// ADD HL,DE (1/8) [-,0,H,C] P203
++opcode_attr static inline void op0_0x19(void)
++{
++	ADD_DD(z80.reg.de);
++}
++// LD A,(DE) (1/8) [-,-,-,-] P330
++opcode_attr static inline void op0_0x1a(void)
++{
++	LD_M(z80.reg.de);
++}
++// DEC DE (1/8) [-,-,-,-] P240
++opcode_attr static inline void op0_0x1b(void)
++{
++	DEC_DR(z80.reg.de);
++}
++// INC E (1/4) [Z,0,H,-] P264
++opcode_attr static inline void op0_0x1c(void)
++{
++	INC_R(z80.reg.e);
++}
++// DEC E (1/4) [Z,1,H,-] P238
++opcode_attr static inline void op0_0x1d(void)
++{
++	DEC_R(z80.reg.e);
++}
++// LD E,n (2/8) [-,-,-,-] P295
++opcode_attr static inline void op0_0x1e(void)
++{
++	LD_N8(z80.reg.e, (z80.reg.pc+1));
++}
++// RRA (1/4) [0,0,0,C] P412
++opcode_attr static inline void op0_0x1f(void)
++{
++	RRA(z80.reg.a);
++}
++
++//================================================
++// Z80 opcodes: 0x20 .. 0x2F
++// emulation status:
++// 0x20 : ut07_rom.c ok
++// 0x21 : ut08_rom.c ok
++// 0x22 : ut11_rom.c ok
++// 0x23 : ut05_rom.c ok
++// 0x24 : ut09_rom.c ok
++// 0x25 : ut09_rom.c ok
++// 0x26 : ut04_rom.c ok
++// 0x27 : ut01_rom.c ok / ut11_rom.c ok
++// 0x28 : ut07_rom.c ok
++// 0x29 : ut05_rom.c ok
++// 0x2a : ut11_rom.c ok
++// 0x2b : ut05_rom.c ok
++// 0x2c : ut09_rom.c ok
++// 0x2d : ut09_rom.c ok
++// 0x2e : ut04_rom.c ok
++// 0x2f : ut09_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// JR NZ,n (2/12,8) [-,-,-,-] P288
++opcode_attr static inline void op0_0x20(void)
++{
++	JR_NZ((z80.reg.pc+1));
++}
++// LD HL,nn (3/12) [-,-,-,-] P293
++opcode_attr static inline void op0_0x21(void)
++{
++	LD_DD_N16(z80.reg.hl, (z80.reg.pc+1));
++}
++// LD (HL++),A (1/8) [-,-,-,-] (gameboy spec.)
++opcode_attr static inline void op0_0x22(void)
++{
++	LD_A16(z80.reg.hl);
++	z80.reg.hl++;
++}
++// INC HL (1/8) [-,-,-,-] P265
++opcode_attr static inline void op0_0x23(void)
++{
++	INC_DR(z80.reg.hl);
++}
++// INC H (1/4) [Z,0,H,-] P264
++opcode_attr static inline void op0_0x24(void)
++{
++	INC_R(z80.reg.h);
++}
++// DEC H (1/4) [Z,1,H,-] P238
++opcode_attr static inline void op0_0x25(void)
++{
++	DEC_R(z80.reg.h);
++}
++// LD H,n (2/8) [-,-,-,-] P295
++opcode_attr static inline void op0_0x26(void)
++{
++	LD_N8(z80.reg.h, (z80.reg.pc+1));
++}
++// DAA (1/4) [Z,-,0,C] P236
++opcode_attr static inline void op0_0x27(void)
++{
++	DAA;
++}
++// JR Z,n (2/12,8) [-,-,-,-] P288
++opcode_attr static inline void op0_0x28(void)
++{
++	JR_Z((z80.reg.pc+1));
++}
++// ADD HL,HL (1/8) [-,0,H,C] P203
++opcode_attr static inline void op0_0x29(void)
++{
++	ADD_DD(z80.reg.hl);
++}
++// LD A,(HL++) (1/8) [-,-,-,-] (Gameboy spec)
++opcode_attr static inline void op0_0x2a(void)
++{
++	LD_M(z80.reg.hl);
++	z80.reg.hl++;
++}
++// DEC HL (1/8) [-,-,-,-] P240
++opcode_attr static inline void op0_0x2b(void)
++{
++	DEC_DR(z80.reg.hl);
++}
++// INC L (1/4) [Z,0,H,-] P264
++opcode_attr static inline void op0_0x2c(void)
++{
++	INC_R(z80.reg.l);
++}
++// DEC L (1/4) [Z,1,H,-] P238
++opcode_attr static inline void op0_0x2d(void)
++{
++	DEC_R(z80.reg.l);
++}
++// LD L,n (2/8) [-,-,-,-] P295
++opcode_attr static inline void op0_0x2e(void)
++{
++	LD_N8(z80.reg.l, (z80.reg.pc+1));
++}
++// CPL (1/4) [-,1,1,-] P235
++opcode_attr static inline void op0_0x2f(void)
++{
++	CPL;
++}
++
++//================================================
++// Z80 opcodes: 0x30 .. 0x3F
++// emulation status:
++// 0x30 : ut07_rom.c ok
++// 0x31 : ut08_rom.c ok
++// 0x32 : ut11_rom.c ok
++// 0x33 : ut03_rom.c ok
++// 0x34 : ut11_rom.c ok
++// 0x35 : ut11_rom.c ok
++// 0x36 : ut04_rom.c ok
++// 0x37 : ut09_rom.c ok
++// 0x38 : ut07_rom.c ok
++// 0x39 : ut03_rom.c ok
++// 0x3a : ut11_rom.c ok
++// 0x3b : ut03_rom.c ok
++// 0x3c : ut09_rom.c ok
++// 0x3d : ut09_rom.c ok
++// 0x3e : ut04_rom.c ok
++// 0x3f : ut09_rom.c ok
++//================================================
++
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// JR NC,n (2/12,8) [-,-,-,-] P288
++opcode_attr static inline void op0_0x30(void)
++{
++	JR_NC((z80.reg.pc+1));
++}
++// LD SP,nn (3/12) [-,-,-,-] P293
++opcode_attr static inline void op0_0x31(void)
++{
++	LD_DD_N16(z80.reg.sp, (z80.reg.pc+1));
++}
++// LD (HL--),A (1/8) [-,-,-,-] (gameboy spec.)
++opcode_attr static inline void op0_0x32(void)
++{
++	LD_A16(z80.reg.hl);
++	z80.reg.hl--;
++}
++// INC SP (1/8) [-,-,-,-] P265
++opcode_attr static inline void op0_0x33(void)
++{
++	INC_DR(z80.reg.sp);
++}
++// INC (HL) (1/12) [Z,0,H,-] P267
++opcode_attr static inline void op0_0x34(void)
++{
++	INC_A16(z80.reg.hl);
++}
++// DEC (HL) (1/12) [Z,1,H,-] P238
++opcode_attr static inline void op0_0x35(void)
++{
++	DEC_A16(z80.reg.hl);
++}
++// LD (HL),n (2/12) [-,-,-,-] P301
++opcode_attr static inline void op0_0x36(void)
++{
++	LD_HL_N8((z80.reg.pc+1));
++}
++// SCF (1/4) [-,0,0,1] P424
++opcode_attr static inline void op0_0x37(void)
++{
++	SCF;
++}
++// JR C,n (2/12,8) [-,-,-,-] P288
++opcode_attr static inline void op0_0x38(void)
++{
++	JR_C((z80.reg.pc+1));
++}
++// ADD HL,SP (1/8) [-,0,H,C] P203
++opcode_attr static inline void op0_0x39(void)
++{
++	ADD_DD(z80.reg.sp);
++}
++// LD A,(HL--) (1/8) [-,-,-,-] (Gameboy spec)
++opcode_attr static inline void op0_0x3a(void)
++{
++	LD_M(z80.reg.hl);
++	z80.reg.hl--;
++}
++// DEC SP (1/8) [-,-,-,-] P240
++opcode_attr static inline void op0_0x3b(void)
++{
++	DEC_DR(z80.reg.sp);
++}
++// INC A (1/4) [Z,0,H,-] P264
++opcode_attr static inline void op0_0x3c(void)
++{
++	INC_R(z80.reg.a);
++}
++// DEC A (1/4) [Z,1,H,-] P238
++opcode_attr static inline void op0_0x3d(void)
++{
++	DEC_R(z80.reg.a);
++}
++// LD A,n (2/8) [-,-,-,-] P295
++opcode_attr static inline void op0_0x3e(void)
++{
++	LD_N8(z80.reg.a, (z80.reg.pc+1));
++}
++// CCF (1/4) [-,0,0,C] P224
++opcode_attr static inline void op0_0x3f(void)
++{
++	CCF;
++}
++
++//================================================
++// Z80 opcodes: 0x40 .. 0x4F
++// emulation status:
++// 0x40 : ut06_rom.c ok
++// 0x41 : ut06_rom.c ok
++// 0x42 : ut06_rom.c ok
++// 0x43 : ut06_rom.c ok
++// 0x44 : ut06_rom.c ok
++// 0x45 : ut06_rom.c ok
++// 0x46 : ut06_rom.c ok
++// 0x47 : ut06_rom.c ok
++// 0x48 : ut06_rom.c ok
++// 0x49 : ut06_rom.c ok
++// 0x4a : ut06_rom.c ok
++// 0x4b : ut06_rom.c ok
++// 0x4c : ut06_rom.c ok
++// 0x4d : ut06_rom.c ok
++// 0x4e : ut06_rom.c ok
++// 0x4f : ut06_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// LD B,B (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x40(void)
++{
++	LD_R(z80.reg.b, z80.reg.b);
++}
++// LD B,C (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x41(void)
++{
++	LD_R(z80.reg.b, z80.reg.c);
++}
++// LD B,D (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x42(void)
++{
++	LD_R(z80.reg.b, z80.reg.d);
++}
++// LD B,E (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x43(void)
++{
++	LD_R(z80.reg.b, z80.reg.e);
++}
++// LD B,H (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x44(void)
++{
++	LD_R(z80.reg.b, z80.reg.h);
++}
++// LD B,L (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x45(void)
++{
++	LD_R(z80.reg.b, z80.reg.l);
++}
++// LD B,(HL) (1/8) [-,-,-,-] P356
++opcode_attr static inline void op0_0x46(void)
++{
++	LD_R_HL(z80.reg.b);
++}
++// LD B,A (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x47(void)
++{
++	LD_R(z80.reg.b, z80.reg.a);
++}
++// LD C,B (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x48(void)
++{
++	LD_R(z80.reg.c, z80.reg.b);
++}
++// LD C,C (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x49(void)
++{
++	LD_R(z80.reg.c, z80.reg.c);
++}
++// LD C,D (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x4a(void)
++{
++	LD_R(z80.reg.c, z80.reg.d);
++}
++// LD C,E (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x4b(void)
++{
++	LD_R(z80.reg.c, z80.reg.e);
++}
++// LD C,H (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x4c(void)
++{
++	LD_R(z80.reg.c, z80.reg.h);
++}
++// LD C,L (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x4d(void)
++{
++	LD_R(z80.reg.c, z80.reg.l);
++}
++// LD C,(HL) (1/8) [-,-,-,-] P356
++opcode_attr static inline void op0_0x4e(void)
++{
++	LD_R_HL(z80.reg.c);
++}
++// LD C,A (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x4f(void)
++{
++	LD_R(z80.reg.c, z80.reg.a);
++}
++
++//================================================
++// Z80 opcodes: 0x50 .. 0x5F
++// emulation status:
++// 0x50 : ut06_rom.c ok
++// 0x51 : ut06_rom.c ok
++// 0x52 : ut06_rom.c ok
++// 0x53 : ut06_rom.c ok
++// 0x54 : ut06_rom.c ok
++// 0x55 : ut06_rom.c ok
++// 0x56 : ut06_rom.c ok
++// 0x57 : ut06_rom.c ok
++// 0x58 : ut06_rom.c ok
++// 0x59 : ut06_rom.c ok
++// 0x5a : ut06_rom.c ok
++// 0x5b : ut06_rom.c ok
++// 0x5c : ut06_rom.c ok
++// 0x5d : ut06_rom.c ok
++// 0x5e : ut06_rom.c ok
++// 0x5f : ut06_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// LD D,B (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x50(void)
++{
++	LD_R(z80.reg.d, z80.reg.b);
++}
++// LD D,C (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x51(void)
++{
++	LD_R(z80.reg.d, z80.reg.c);
++}
++// LD D,D (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x52(void)
++{
++	LD_R(z80.reg.d, z80.reg.d);
++}
++// LD D,E (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x53(void)
++{
++	LD_R(z80.reg.d, z80.reg.e);
++}
++// LD D,H (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x54(void)
++{
++	LD_R(z80.reg.d, z80.reg.h);
++}
++// LD D,L (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x55(void)
++{
++	LD_R(z80.reg.d, z80.reg.l);
++}
++// LD D,(HL) (1/8) [-,-,-,-] P356
++opcode_attr static inline void op0_0x56(void)
++{
++	LD_R_HL(z80.reg.d);
++}
++// LD D,A (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x57(void)
++{
++	LD_R(z80.reg.d, z80.reg.a);
++}
++// LD E,B (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x58(void)
++{
++	LD_R(z80.reg.e, z80.reg.b);
++}
++// LD E,C (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x59(void)
++{
++	LD_R(z80.reg.e, z80.reg.c);
++}
++// LD E,D (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x5a(void)
++{
++	LD_R(z80.reg.e, z80.reg.d);
++}
++// LD E,E (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x5b(void)
++{
++	LD_R(z80.reg.e, z80.reg.e);
++}
++// LD E,H (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x5c(void)
++{
++	LD_R(z80.reg.e, z80.reg.h);
++}
++// LD E,L (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x5d(void)
++{
++	LD_R(z80.reg.e, z80.reg.l);
++}
++// LD E,(HL) (1/8) [-,-,-,-] P356
++opcode_attr static inline void op0_0x5e(void)
++{
++	LD_R_HL(z80.reg.e);
++}
++// LD E,A (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x5f(void)
++{
++	LD_R(z80.reg.e, z80.reg.a);
++}
++
++//================================================
++// Z80 opcodes: 0x60 .. 0x6F
++// emulation status:
++// 0x60 : ut06_rom.c ok
++// 0x61 : ut06_rom.c ok
++// 0x62 : ut06_rom.c ok
++// 0x63 : ut06_rom.c ok
++// 0x64 : ut06_rom.c ok
++// 0x65 : ut06_rom.c ok
++// 0x66 : ut06_rom.c ok
++// 0x67 : ut06_rom.c ok
++// 0x68 : ut06_rom.c ok
++// 0x69 : ut06_rom.c ok
++// 0x6a : ut06_rom.c ok
++// 0x6b : ut06_rom.c ok
++// 0x6c : ut06_rom.c ok
++// 0x6d : ut06_rom.c ok
++// 0x6e : ut06_rom.c ok
++// 0x6f : ut06_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// LD H,B (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x60(void)
++{
++	LD_R(z80.reg.h, z80.reg.b);
++}
++// LD H,C (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x61(void)
++{
++	LD_R(z80.reg.h, z80.reg.c);
++}
++// LD H,D (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x62(void)
++{
++	LD_R(z80.reg.h, z80.reg.d);
++}
++// LD H,E (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x63(void)
++{
++	LD_R(z80.reg.h, z80.reg.e);
++}
++// LD H,H (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x64(void)
++{
++	LD_R(z80.reg.h, z80.reg.h);
++}
++// LD H,L (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x65(void)
++{
++	LD_R(z80.reg.h, z80.reg.l);
++}
++// LD H,(HL) (1/8) [-,-,-,-] P356
++opcode_attr static inline void op0_0x66(void)
++{
++	LD_R_HL(z80.reg.h);
++}
++// LD H,A (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x67(void)
++{
++	LD_R(z80.reg.h, z80.reg.a);
++}
++// LD L,B (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x68(void)
++{
++	LD_R(z80.reg.l, z80.reg.b);
++}
++// LD L,C (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x69(void)
++{
++	LD_R(z80.reg.l, z80.reg.c);
++}
++// LD L,D (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x6a(void)
++{
++	LD_R(z80.reg.l, z80.reg.d);
++}
++// LD L,E (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x6b(void)
++{
++	LD_R(z80.reg.l, z80.reg.e);
++}
++// LD L,H (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x6c(void)
++{
++	LD_R(z80.reg.l, z80.reg.h);
++}
++// LD L,L (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x6d(void)
++{
++	LD_R(z80.reg.l, z80.reg.l);
++}
++// LD L,(HL) (1/8) [-,-,-,-] P356
++opcode_attr static inline void op0_0x6e(void)
++{
++	LD_R_HL(z80.reg.l);
++}
++// LD L,A (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x6f(void)
++{
++	LD_R(z80.reg.l, z80.reg.a);
++}
++
++//================================================
++// Z80 opcodes: 0x70 .. 0x7F
++// emulation status:
++// 0x70 : ut06_rom.c ok
++// 0x71 : ut06_rom.c ok
++// 0x72 : ut06_rom.c ok
++// 0x73 : ut06_rom.c ok
++// 0x74 : ut06_rom.c ok
++// 0x75 : ut06_rom.c ok
++// 0x76 : ut02_rom.c ok
++// 0x77 : ut06_rom.c ok
++// 0x78 : ut06_rom.c ok
++// 0x79 : ut06_rom.c ok
++// 0x7a : ut06_rom.c ok
++// 0x7b : ut06_rom.c ok
++// 0x7c : ut06_rom.c ok
++// 0x7d : ut06_rom.c ok
++// 0x7e : ut06_rom.c ok
++// 0x7f : ut06_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// LD (HL),B (1/8) [-,-,-,-] P303
++opcode_attr static inline void op0_0x70(void)
++{
++	LD_HL_R(z80.reg.b);
++}
++// LD (HL),C (1/8) [-,-,-,-] P303
++opcode_attr static inline void op0_0x71(void)
++{
++	LD_HL_R(z80.reg.c);
++}
++// LD (HL),D (1/8) [-,-,-,-] P303
++opcode_attr static inline void op0_0x72(void)
++{
++	LD_HL_R(z80.reg.d);
++}
++// LD (HL),E (1/8) [-,-,-,-] P303
++opcode_attr static inline void op0_0x73(void)
++{
++	LD_HL_R(z80.reg.e);
++}
++// LD (HL),H (1/8) [-,-,-,-] P303
++opcode_attr static inline void op0_0x74(void)
++{
++	LD_HL_R(z80.reg.h);
++}
++// LD (HL),L (1/8) [-,-,-,-] P303
++opcode_attr static inline void op0_0x75(void)
++{
++	LD_HL_R(z80.reg.l);
++}
++// HALT (1/4) [-,-,-,-] P257
++opcode_attr static inline void op0_0x76(void)
++{
++	if(z80.halt_mode == 0) {
++		// first call
++		z80.halt_mode = 1;
++		z80.halt_skip = 0;
++	}
++	else {
++		// wait until skip
++		if(z80.halt_skip == 1) {
++			// skip HALT
++			z80.halt_mode = 0;
++			z80.halt_skip = 0;
++			z80.reg.pc++;
++		}
++
++	}
++}
++// LD (HL),A (1/8) [-,-,-,-] P303
++opcode_attr static inline void op0_0x77(void)
++{
++	LD_HL_R(z80.reg.a);
++}
++// LD A,B (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x78(void)
++{
++	LD_R(z80.reg.a, z80.reg.b);
++}
++// LD A,C (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x79(void)
++{
++	LD_R(z80.reg.a, z80.reg.c);
++}
++// LD A,D (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x7a(void)
++{
++	LD_R(z80.reg.a, z80.reg.d);
++}
++// LD A,E (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x7b(void)
++{
++	LD_R(z80.reg.a, z80.reg.e);
++}
++// LD A,H (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x7c(void)
++{
++	LD_R(z80.reg.a, z80.reg.h);
++}
++// LD A,L (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x7d(void)
++{
++	LD_R(z80.reg.a, z80.reg.l);
++}
++// LD A,(HL) (1/8) [-,-,-,-] P356
++opcode_attr static inline void op0_0x7e(void)
++{
++	LD_R_HL(z80.reg.a);
++}
++// LD A,A (1/4) [-,-,-,-] P297
++opcode_attr static inline void op0_0x7f(void)
++{
++	LD_R(z80.reg.a, z80.reg.a);
++}
++
++//================================================
++// Z80 opcodes: 0x80 .. 0x8F
++// emulation status:
++// 0x80 : ut09_rom.c ok
++// 0x81 : ut09_rom.c ok
++// 0x82 : ut09_rom.c ok
++// 0x83 : ut09_rom.c ok
++// 0x84 : ut09_rom.c ok
++// 0x85 : ut09_rom.c ok
++// 0x86 : ut11_rom.c ok
++// 0x87 : ut09_rom.c ok
++// 0x88 : ut09_rom.c ok
++// 0x89 : ut09_rom.c ok
++// 0x8a : ut09_rom.c ok
++// 0x8b : ut09_rom.c ok
++// 0x8c : ut09_rom.c ok
++// 0x8d : ut09_rom.c ok
++// 0x8e : ut11_rom.c ok
++// 0x8f : ut09_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// ADD A,B (1/4) [Z,0,H,C] P201
++opcode_attr static inline void op0_0x80(void)
++{
++	ADD_R(z80.reg.b);
++}
++// ADD A,C (1/4) [Z,0,H,C] P201
++opcode_attr static inline void op0_0x81(void)
++{
++	ADD_R(z80.reg.c);
++}
++// ADD A,D (1/4) [Z,0,H,C] P201
++opcode_attr static inline void op0_0x82(void)
++{
++	ADD_R(z80.reg.d);
++}
++// ADD A,E (1/4) [Z,0,H,C] P201
++opcode_attr static inline void op0_0x83(void)
++{
++	ADD_R(z80.reg.e);
++}
++// ADD A,H (1/4) [Z,0,H,C] P201
++opcode_attr static inline void op0_0x84(void)
++{
++	ADD_R(z80.reg.h);
++}
++// ADD A,L (1/4) [Z,0,H,C] P201
++opcode_attr static inline void op0_0x85(void)
++{
++	ADD_R(z80.reg.l);
++}
++// ADD A,(HL) (1/8) [Z,0,H,C] P194
++opcode_attr static inline void op0_0x86(void)
++{
++	ADD_N16(z80.reg.hl);
++}
++// ADD A,A (1/4) [Z,0,H,C] P201
++opcode_attr static inline void op0_0x87(void)
++{
++	ADD_R(z80.reg.a);
++}
++// ADC A,B (1/4) [Z,0,H,C] P190
++opcode_attr static inline void op0_0x88(void)
++{
++	ADC_R(z80.reg.b);
++}
++// ADC A,C (1/4) [Z,0,H,C] P190
++opcode_attr static inline void op0_0x89(void)
++{
++	ADC_R(z80.reg.c);
++}
++// ADC A,D (1/4) [Z,0,H,C] P190
++opcode_attr static inline void op0_0x8a(void)
++{
++	ADC_R(z80.reg.d);
++}
++// ADC A,E (1/4) [Z,0,H,C] P190
++opcode_attr static inline void op0_0x8b(void)
++{
++	ADC_R(z80.reg.e);
++}
++// ADC A,H (1/4) [Z,0,H,C] P190
++opcode_attr static inline void op0_0x8c(void)
++{
++	ADC_R(z80.reg.h);
++}
++// ADC A,L (1/4) [Z,0,H,C] P190
++opcode_attr static inline void op0_0x8d(void)
++{
++	ADC_R(z80.reg.l);
++}
++// ADC A,(HL) (1/8) [Z,0,H,C] P190
++opcode_attr static inline void op0_0x8e(void)
++{
++	ADC_N16(z80.reg.hl);
++}
++// ADC A,A (1/4) [Z,0,H,C] P190
++opcode_attr static inline void op0_0x8f(void)
++{
++	ADC_R(z80.reg.a);
++}
++
++//================================================
++// Z80 opcodes: 0x90 .. 0x9F
++// emulation status:
++// 0x90 : ut09_rom.c ok
++// 0x91 : ut09_rom.c ok
++// 0x92 : ut09_rom.c ok
++// 0x93 : ut09_rom.c ok
++// 0x94 : ut09_rom.c ok
++// 0x95 : ut09_rom.c ok
++// 0x96 : ut11_rom.c ok
++// 0x97 : ut09_rom.c ok
++// 0x98 : ut09_rom.c ok
++// 0x99 : ut09_rom.c ok
++// 0x9a : ut09_rom.c ok
++// 0x9b : ut09_rom.c ok
++// 0x9c : ut09_rom.c ok
++// 0x9d : ut09_rom.c ok
++// 0x9e : ut11_rom.c ok
++// 0x9f : ut09_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// SUB B (1/4) [Z,1,H,C] P434
++opcode_attr static inline void op0_0x90(void)
++{
++	SUB_R(z80.reg.b);
++}
++// SUB C (1/4) [Z,1,H,C] P434
++opcode_attr static inline void op0_0x91(void)
++{
++	SUB_R(z80.reg.c);
++}
++// SUB D (1/4) [Z,1,H,C] P434
++opcode_attr static inline void op0_0x92(void)
++{
++	SUB_R(z80.reg.d);
++}
++// SUB E (1/4) [Z,1,H,C] P434
++opcode_attr static inline void op0_0x93(void)
++{
++	SUB_R(z80.reg.e);
++}
++// SUB H (1/4) [Z,1,H,C] P434
++opcode_attr static inline void op0_0x94(void)
++{
++	SUB_R(z80.reg.h);
++}
++// SUB L (1/4) [Z,1,H,C] P434
++opcode_attr static inline void op0_0x95(void)
++{
++	SUB_R(z80.reg.l);
++}
++// SUB (HL) (1/8) [Z,1,H,C] P434
++opcode_attr static inline void op0_0x96(void)
++{
++	SUB_N16(z80.reg.hl);
++}
++// SUB A (1/4) [Z,1,H,C] P434
++opcode_attr static inline void op0_0x97(void)
++{
++	SUB_R(z80.reg.a);
++}
++// SBC A,B (1/4) [Z,1,H,C] P420
++opcode_attr static inline void op0_0x98(void)
++{
++	SBC_R(z80.reg.b);
++}
++// SBC A,C (1/4) [Z,1,H,C] P420
++opcode_attr static inline void op0_0x99(void)
++{
++	SBC_R(z80.reg.c);
++}
++// SBC A,D (1/4) [Z,1,H,C] P420
++opcode_attr static inline void op0_0x9a(void)
++{
++	SBC_R(z80.reg.d);
++}
++// SBC A,E (1/4) [Z,1,H,C] P420
++opcode_attr static inline void op0_0x9b(void)
++{
++	SBC_R(z80.reg.e);
++}
++// SBC A,H (1/4) [Z,1,H,C] P420
++opcode_attr static inline void op0_0x9c(void)
++{
++	SBC_R(z80.reg.h);
++}
++// SBC A,L (1/4) [Z,1,H,C] P420
++opcode_attr static inline void op0_0x9d(void)
++{
++	SBC_R(z80.reg.l);
++}
++// SBC A,(HL) (1/8) [Z,1,H,C] P420
++opcode_attr static inline void op0_0x9e(void)
++{
++	SBC_N16(z80.reg.hl);
++}
++// SBC A,A (1/4) [Z,1,H,C] P420
++opcode_attr static inline void op0_0x9f(void)
++{
++	SBC_R(z80.reg.a);
++}
++
++//================================================
++// Z80 opcodes: 0xa0 .. 0xaF
++// emulation status:
++// 0xa0 : ut09_rom.c ok
++// 0xa1 : ut09_rom.c ok
++// 0xa2 : ut09_rom.c ok
++// 0xa3 : ut09_rom.c ok
++// 0xa4 : ut09_rom.c ok
++// 0xa5 : ut09_rom.c ok
++// 0xa6 : ut11_rom.c ok
++// 0xa7 : ut09_rom.c ok
++// 0xa8 : ut09_rom.c ok
++// 0xa9 : ut09_rom.c ok
++// 0xaa : ut09_rom.c ok
++// 0xab : ut09_rom.c ok
++// 0xac : ut09_rom.c ok
++// 0xad : ut09_rom.c ok
++// 0xae : ut11_rom.c ok
++// 0xaf : ut09_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// AND B (1/4) [Z,0,1,0] P209
++opcode_attr static inline void op0_0xa0(void)
++{
++	AND_R(z80.reg.b);
++}
++// AND C (1/4) [Z,0,1,0] P209
++opcode_attr static inline void op0_0xa1(void)
++{
++	AND_R(z80.reg.c);
++}
++// AND D (1/4) [Z,0,1,0] P209
++opcode_attr static inline void op0_0xa2(void)
++{
++	AND_R(z80.reg.d);
++}
++// AND E (1/4) [Z,0,1,0] P209
++opcode_attr static inline void op0_0xa3(void)
++{
++	AND_R(z80.reg.e);
++}
++// AND H (1/4) [Z,0,1,0] P209
++opcode_attr static inline void op0_0xa4(void)
++{
++	AND_R(z80.reg.h);
++}
++// AND L (1/4) [Z,0,1,0] P209
++opcode_attr static inline void op0_0xa5(void)
++{
++	AND_R(z80.reg.l);
++}
++// AND (HL) (1/8) [Z,0,1,0] P209
++opcode_attr static inline void op0_0xa6(void)
++{
++	AND_M(z80.reg.hl);
++}
++// AND A (1/4) [Z,0,1,0] P209
++opcode_attr static inline void op0_0xa7(void)
++{
++	AND_R(z80.reg.a);
++}
++// XOR B (1/4) [Z,0,0,0] P436
++opcode_attr static inline void op0_0xa8(void)
++{
++	XOR_R(z80.reg.b);
++}
++// XOR C (1/4) [Z,0,0,0] P436
++opcode_attr static inline void op0_0xa9(void)
++{
++	XOR_R(z80.reg.c);
++}
++// XOR D (1/4) [Z,0,0,0] P436
++opcode_attr static inline void op0_0xaa(void)
++{
++	XOR_R(z80.reg.d);
++}
++// XOR E (1/4) [Z,0,0,0] P436
++opcode_attr static inline void op0_0xab(void)
++{
++	XOR_R(z80.reg.e);
++}
++// XOR H (1/4) [Z,0,0,0] P436
++opcode_attr static inline void op0_0xac(void)
++{
++	XOR_R(z80.reg.h);
++}
++// XOR L (1/4) [Z,0,0,0] P436
++opcode_attr static inline void op0_0xad(void)
++{
++	XOR_R(z80.reg.l);
++}
++// XOR (HL) (1/8) [Z,0,0,0] P436
++opcode_attr static inline void op0_0xae(void)
++{
++	XOR_M(z80.reg.hl);
++}
++// XOR A (1/4) [Z,0,0,0] P436
++opcode_attr static inline void op0_0xaf(void)
++{
++	XOR_R(z80.reg.a);
++}
++
++//================================================
++// Z80 opcodes: 0xb0 .. 0xbF
++// emulation status:
++// 0xb0 : ut09_rom.c ok
++// 0xb1 : ut09_rom.c ok
++// 0xb2 : ut09_rom.c ok
++// 0xb3 : ut09_rom.c ok
++// 0xb4 : ut09_rom.c ok
++// 0xb5 : ut09_rom.c ok
++// 0xb6 : ut11_rom.c ok
++// 0xb7 : ut09_rom.c ok
++// 0xb8 : ut09_rom.c ok
++// 0xb9 : ut09_rom.c ok
++// 0xba : ut09_rom.c ok
++// 0xbb : ut09_rom.c ok
++// 0xbc : ut09_rom.c ok
++// 0xbd : ut09_rom.c ok
++// 0xbe : ut11_rom.c ok
++// 0xbf : ut09_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// OR B (1/4) [Z,0,0,0] P360
++opcode_attr static inline void op0_0xb0(void)
++{
++	OR_R(z80.reg.b);
++}
++// OR C (1/4) [Z,0,0,0] P360
++opcode_attr static inline void op0_0xb1(void)
++{
++	OR_R(z80.reg.c);
++}
++// OR D (1/4) [Z,0,0,0] P360
++opcode_attr static inline void op0_0xb2(void)
++{
++	OR_R(z80.reg.d);
++}
++// OR E (1/4) [Z,0,0,0] P360
++opcode_attr static inline void op0_0xb3(void)
++{
++	OR_R(z80.reg.e);
++}
++// OR H (1/4) [Z,0,0,0] P360
++opcode_attr static inline void op0_0xb4(void)
++{
++	OR_R(z80.reg.h);
++}
++// OR L (1/4) [Z,0,0,0] P360
++opcode_attr static inline void op0_0xb5(void)
++{
++	OR_R(z80.reg.l);
++}
++// OR (HL) (1/8) [Z,0,0,0] P360
++opcode_attr static inline void op0_0xb6(void)
++{
++	OR_M(z80.reg.hl);
++}
++// OR A (1/4) [Z,0,0,0] P360
++opcode_attr static inline void op0_0xb7(void)
++{
++	OR_R(z80.reg.a);
++}
++// CP B (1/4) [Z,1,H,C] P225
++opcode_attr static inline void op0_0xb8(void)
++{
++	CP_R(z80.reg.b);
++}
++// CP C (1/4) [Z,1,H,C] P225
++opcode_attr static inline void op0_0xb9(void)
++{
++	CP_R(z80.reg.c);
++}
++// CP D (1/4) [Z,1,H,C] P225
++opcode_attr static inline void op0_0xba(void)
++{
++	CP_R(z80.reg.d);
++}
++// CP E (1/4) [Z,1,H,C] P225
++opcode_attr static inline void op0_0xbb(void)
++{
++	CP_R(z80.reg.e);
++}
++// CP H (1/4) [Z,1,H,C] P225
++opcode_attr static inline void op0_0xbc(void)
++{
++	CP_R(z80.reg.h);
++}
++// CP L (1/4) [Z,1,H,C] P225
++opcode_attr static inline void op0_0xbd(void)
++{
++	CP_R(z80.reg.l);
++}
++// CP (HL) (1/8) [Z,1,H,C] P225
++opcode_attr static inline void op0_0xbe(void)
++{
++	CP_A16(z80.reg.hl);
++}
++// CP A (1/4) [Z,1,H,C] P225
++opcode_attr static inline void op0_0xbf(void)
++{
++	CP_R(z80.reg.a);
++}
++
++//================================================
++// Z80 opcodes: 0xc0 .. 0xcF
++// emulation status:
++// 0xc0 : ut07_rom.c ok
++// 0xc1 : ut08_rom.c ok
++// 0xc2 : ut07_rom.c ok
++// 0xc3 : ut07_rom.c ok
++// 0xc4 : ut07_rom.c ok
++// 0xc5 : ut08_rom.c ok
++// 0xc6 : ut04_rom.c ok
++// 0xc7 : ut07_rom.c ok
++// 0xc8 : ut07_rom.c ok
++// 0xc9 : ut07_rom.c ok
++// 0xca : ut07_rom.c ok
++// 0xcb : ut09_rom.c / ut10_rom.c / ut11_rom.c ok
++// 0xcc : ut07_rom.c ok
++// 0xcd : ut07_rom.c ok
++// 0xce : ut04_rom.c ok
++// 0xcf : ut07_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// RET NZ (1/20) [-,-,-,-] P390
++opcode_attr static inline void op0_0xc0(void)
++{
++	RET_NZ(z80.reg.sp);
++}
++// POP BC (1/12) [-,-,-,-] P373
++opcode_attr static inline void op0_0xc1(void)
++{
++	POP_DR(z80.reg.bc);
++}
++// JP NZ,nn (3/16) [-,-,-,-] P282
++opcode_attr static inline void op0_0xc2(void)
++{
++	JP_NZ((z80.reg.pc+1));
++}
++// JP nn (3/16) [-,-,-,-] P89
++opcode_attr static inline void op0_0xc3(void)
++{
++	JP_NN((z80.reg.pc+1));
++}
++// CALL NZ,nn (3/24) [-,-,-,-] P219
++opcode_attr static inline void op0_0xc4(void)
++{
++	CALL_NZ((z80.reg.pc+1));
++}
++// PUSH BC (1/16) [-,-,-,-] P379
++opcode_attr static inline void op0_0xc5(void)
++{
++	PUSH_DR(z80.reg.bc);
++}
++// ADD A,n (2/8) [Z,0,H,C] P200
++opcode_attr static inline void op0_0xc6(void)
++{
++	ADD_N8((z80.reg.pc+1));
++}
++// RST 00H (1/16) [-,-,-,-] P418
++opcode_attr static inline void op0_0xc7(void)
++{
++	RST((z80.reg.pc+1), 0x00);
++}
++// RET Z (1/20) [-,-,-,-] P390
++opcode_attr static inline void op0_0xc8(void)
++{
++	RET_Z(z80.reg.sp);
++}
++// RET (1/16) [-,-,-,-] P388
++opcode_attr static inline void op0_0xc9(void)
++{
++	RET(z80.reg.sp);
++}
++// JP Z,nn (3/16) [-,-,-,-] P282
++opcode_attr static inline void op0_0xca(void)
++{
++	JP_Z((z80.reg.pc+1));
++}
++// 16bit Opcode 0xCB..
++opcode_attr static inline void op0_0xcb(void)
++{
++	// nothing to do here (handelt by z80_opcode_table_cb.c)
++}
++// CALL Z,nn (3/24) [-,-,-,-] P219
++opcode_attr static inline void op0_0xcc(void)
++{
++	CALL_Z((z80.reg.pc+1));
++}
++// CALL nn (3/24) [-,-,-,-] P222
++opcode_attr static inline void op0_0xcd(void)
++{
++	CALL_N16((z80.reg.pc+1));
++}
++// ADC A,n (2/8) [Z,0,H,C] P190
++opcode_attr static inline void op0_0xce(void)
++{
++	ADC_N8((z80.reg.pc+1));
++}
++// RST 08H (1/16) [-,-,-,-] P418
++opcode_attr static inline void op0_0xcf(void)
++{
++	RST((z80.reg.pc+1), 0x08);
++}
++
++//================================================
++// Z80 opcodes: 0xd0 .. 0xdF
++// emulation status:
++// 0xd0 : ut07_rom.c ok
++// 0xd1 : ut08_rom.c ok
++// 0xd2 : ut07_rom.c ok
++// 0xd3 : not used in Gameboy
++// 0xd4 : ut07_rom.c ok
++// 0xd5 : ut08_rom.c ok
++// 0xd6 : ut04_rom.c ok
++// 0xd7 : ut07_rom.c ok
++// 0xd8 : ut07_rom.c ok
++// 0xd9 : ut07_rom.c ok
++// 0xda : ut07_rom.c ok
++// 0xdb : not used in Gameboy
++// 0xdc : ut07_rom.c ok
++// 0xdd : not used in Gameboy
++// 0xde : ut04_rom.c ok
++// 0xdf : ut07_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// RET NC (1/20) [-,-,-,-] P390
++opcode_attr static inline void op0_0xd0(void)
++{
++	RET_NC(z80.reg.sp);
++}
++// POP DE (1/12) [-,-,-,-] P373
++opcode_attr static inline void op0_0xd1(void)
++{
++	POP_DR(z80.reg.de);
++}
++// JP NC,nn (3/16) [-,-,-,-] P282
++opcode_attr static inline void op0_0xd2(void)
++{
++	JP_NC((z80.reg.pc+1));
++}
++// 0xD3
++opcode_attr static inline void op0_0xd3(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// CALL NC,nn (3/24) [-,-,-,-] P219
++opcode_attr static inline void op0_0xd4(void)
++{
++	CALL_NC((z80.reg.pc+1));
++}
++// PUSH DE (1/16) [-,-,-,-] P379
++opcode_attr static inline void op0_0xd5(void)
++{
++	PUSH_DR(z80.reg.de);
++}
++// SUB n (2/8) [Z,1,H,C] P434
++opcode_attr static inline void op0_0xd6(void)
++{
++	SUB_N8((z80.reg.pc+1));
++}
++// RST 10H (1/16) [-,-,-,-] P418
++opcode_attr static inline void op0_0xd7(void)
++{
++	RST((z80.reg.pc+1), 0x10);
++}
++// RET C (1/20) [-,-,-,-] P390
++opcode_attr static inline void op0_0xd8(void)
++{
++	RET_C(z80.reg.sp);
++}
++// RETI (1/16) [-,-,-,-] (Gameboy spec.)
++opcode_attr static inline void op0_0xd9(void)
++{
++	RETI(z80.reg.sp);
++}
++// JP C,nn (3/16) [-,-,-,-] P282
++opcode_attr static inline void op0_0xda(void)
++{
++	JP_C((z80.reg.pc+1));
++}
++// 0xDB
++opcode_attr static inline void op0_0xdb(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// CALL C,nn (3/24) [-,-,-,-] P219
++opcode_attr static inline void op0_0xdc(void)
++{
++	CALL_C((z80.reg.pc+1));
++}
++// 0xDD
++opcode_attr static inline void op0_0xdd(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// SBC A,n (2/8) [Z,1,H,C] P420
++opcode_attr static inline void op0_0xde(void)
++{
++	SBC_N8((z80.reg.pc+1));
++}
++// RST 18H (1/16) [-,-,-,-] P418
++opcode_attr static inline void op0_0xdf(void)
++{
++	RST((z80.reg.pc+1), 0x18);
++}
++
++//================================================
++// Z80 opcodes: 0xe0 .. 0xeF
++// emulation status:
++// 0xe0 : ut08_rom.c ok
++// 0xe1 : ut08_rom.c ok
++// 0xe2 : ut08_rom.c ok
++// 0xe3 : not used in Gameboy
++// 0xe4 : not used in Gameboy
++// 0xe5 : ut08_rom.c ok
++// 0xe6 : ut04_rom.c ok
++// 0xe7 : ut07_rom.c ok
++// 0xe8 : ut03_rom.c ok
++// 0xe9 : ?
++// 0xea : ut08_rom.c ok
++// 0xeb : not used in Gameboy
++// 0xec : not used in Gameboy
++// 0xed : not used in Gameboy
++// 0xee : ut04_rom.c ok
++// 0xef : ut07_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// LDH (n),A (2/12) [-,-,-,-] (Gameboy spec.)
++opcode_attr static inline void op0_0xe0(void)
++{
++	LDH_N8_A((z80.reg.pc+1));
++}
++// POP HL (1/12) [-,-,-,-] P373
++opcode_attr static inline void op0_0xe1(void)
++{
++	POP_DR(z80.reg.hl);
++}
++// LDH (C),A (1/8) [-,-,-,-] (Gameboy spec.)
++opcode_attr static inline void op0_0xe2(void)
++{
++	LDH_C;
++}
++// 0xE3
++opcode_attr static inline void op0_0xe3(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// 0xE4
++opcode_attr static inline void op0_0xe4(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// PUSH HL (1/16) [-,-,-,-] P379
++opcode_attr static inline void op0_0xe5(void)
++{
++	PUSH_DR(z80.reg.hl);
++}
++// AND n (2/8) [Z,0,1,0] P209
++opcode_attr static inline void op0_0xe6(void)
++{
++	AND_N8((z80.reg.pc+1));
++}
++// RST 20H (1/16) [-,-,-,-] P418
++opcode_attr static inline void op0_0xe7(void)
++{
++	RST((z80.reg.pc+1), 0x20);
++}
++// ADD SP,n (2/16) [0,0,H,C] (Gameboy spec.)
++opcode_attr static inline void op0_0xe8(void)
++{
++	ADD_SP_N8((z80.reg.pc+1));
++}
++// JP HL (1/4) [-,-,-,-] P285
++opcode_attr static inline void op0_0xe9(void)
++{
++	JP_HL;
++}
++// LD (nn),A (3/16) [-,-,-,-] (Gameboy spec.)
++opcode_attr static inline void op0_0xea(void)
++{
++	LD_N16_A((z80.reg.pc+1));
++}
++// 0xEB
++opcode_attr static inline void op0_0xeb(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// 0xEC
++opcode_attr static inline void op0_0xec(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// 0xED
++opcode_attr static inline void op0_0xed(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// XOR n (2/8) [Z,0,0,0] P436
++opcode_attr static inline void op0_0xee(void)
++{
++	XOR_N8((z80.reg.pc+1));
++}
++// RST 28H (1/16) [-,-,-,-] P418
++opcode_attr static inline void op0_0xef(void)
++{
++	RST((z80.reg.pc+1), 0x28);
++}
++
++//================================================
++// Z80 opcodes: 0xf0 .. 0xfF
++// emulation status:
++// 0xf0 : ut08_rom.c ok
++// 0xf1 : ut08_rom.c ok
++// 0xf2 : ut08_rom.c ok
++// 0xf3 : ut02_rom.c ok
++// 0xf4 : not used in Gameboy
++// 0xf5 : ut08_rom.c ok
++// 0xf6 : ut04_rom.c ok
++// 0xf7 : ut07_rom.c ok
++// 0xf8 : ut03_rom.c ok
++// 0xf9 : ut03_rom.c ok
++// 0xfa : ut08_rom.c ok
++// 0xfb : ut02_rom.c ok
++// 0xfc : not used in Gameboy
++// 0xfd : not used in Gameboy
++// 0xfe : ut04_rom.c ok
++// 0xff : ut07_rom.c ok
++//================================================
++
++//------------------------------------------------
++// command (length/cycles) [Z,N,H,C]
++// LDH A,(n) (2/12) [-,-,-,-] (Gameboy spec.)
++opcode_attr static inline void op0_0xf0(void)
++{
++	LDH_A_N8((z80.reg.pc+1));
++}
++// POP AF (1/12) [-,-,-,-] P373
++opcode_attr static inline void op0_0xf1(void)
++{
++	POP_DR(z80.reg.af);
++	z80.reg.f &= FLAG_MASK; // bit0..3 always read as Lo
++}
++// LDH A,(C) (1/8) [-,-,-,-] (Gameboy spec.)
++opcode_attr static inline void op0_0xf2(void)
++{
++	LDH_A;
++}
++// DI (1/4) [-,-,-,-] P244
++opcode_attr static inline void op0_0xf3(void)
++{
++	DI;
++}
++// 0xF4
++opcode_attr static inline void op0_0xf4(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// PUSH AF (1/16) [-,-,-,-] P379
++opcode_attr static inline void op0_0xf5(void)
++{
++	PUSH_DR(z80.reg.af);
++}
++// OR n (2/8) [Z,0,0,0] P360
++opcode_attr static inline void op0_0xf6(void)
++{
++	OR_N8((z80.reg.pc+1));
++}
++// RST 30H (1/16) [-,-,-,-] P418
++opcode_attr static inline void op0_0xf7(void)
++{
++	RST((z80.reg.pc+1), 0x30);
++}
++// LD HL,SP+(n) (2/12) [0,0,H,C] (Gameboy spec.)
++opcode_attr static inline void op0_0xf8(void)
++{
++	LD_HL_SP_N8((z80.reg.pc+1));
++}
++// LD SP,HL (1/8) [-,-,-,-] P345
++opcode_attr static inline void op0_0xf9(void)
++{
++	LD_R(z80.reg.sp, z80.reg.hl);
++}
++// LD A,(nn) (3/16) [-,-,-,-] (Gameboy spec.)
++opcode_attr static inline void op0_0xfa(void)
++{
++	LD_A_N16((z80.reg.pc+1));
++}
++// EI (1/4) [-,-,-,-] P247
++opcode_attr static inline void op0_0xfb(void)
++{
++	EI;
++}
++// 0xFC
++opcode_attr static inline void op0_0xfc(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// 0xFD
++opcode_attr static inline void op0_0xfd(void)
++{
++	OPCODE_ERR; // not used in Gameboy
++}
++// CP n (2/8) [Z,1,H,C] P225
++opcode_attr static inline void op0_0xfe(void)
++{
++	CP_N8((z80.reg.pc+1));
++}
++// RST 38H (1/16) [-,-,-,-] P418
++opcode_attr static inline void op0_0xff(void)
++{
++	RST((z80.reg.pc+1), 0x38);
++}
++
++#undef opcode_attr
++
++#endif /* Z80_OPCODE_FUNC_H_ */

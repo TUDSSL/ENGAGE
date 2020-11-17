@@ -1,0 +1,10 @@
+*.o
+
+# build files
+build/
+
+# visualization files
+visual/*.mp4
+visual/*.pdf
+visual/*.json
+visual/*.txt

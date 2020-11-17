@@ -1,0 +1,1821 @@
+--- external/F746_Gameboy_source/src/gameboy_ub.c	2018-04-28 10:29:02.000000000 +0200
++++ external/F746_Gameboy_git/src/gameboy_ub.c	2020-10-13 21:42:07.280925768 +0200
+@@ -11,60 +11,31 @@
+ // Funktion : Gameboy emulator
+ //--------------------------------------------------------------
+ 
+-
+-
+ #include "gameboy_ub.h"
+ #include "z80_ub.h"
+ #include "z80_opcode.h"
+-#include "stm32_ub_lcd_480x272.h"
+-#include "stm32_ub_sdram.h"
+-#include "stm32_ub_graphic2d.h"
+ 
++#if OPCODE_GOTO
++#include "z80_opcode_goto.h"
++#endif
+ 
+-#include "stm32_ub_uart.h"
+ char strbuf[30];
+ 
++Shadow_t Shadow;
++GB_t GB;
++
++
++uint8_t memoryControllerType; // pulled this out to inline
++uint32_t memoryControllerBankOffset; // pulled this out to inline
++
+ 
+ //--------------------------------------------------------------
+ void p_shadow_init(void);
+ void p_start_bootloader(void);
+ void p_check_cartridge(void);
+-void p_clr_int_40(void);
+-void p_set_int_40(void);
+-void p_clr_int_48(void);
+-void p_set_int_48(void);
+-void p_clr_int_50(void);
+-void p_set_int_50(void);
+-void p_reset_lcd_mode(void);
+-void p_set_lcd_mode(uint8_t new_mode);
+-uint8_t p_calc_lcd_mode(void);
++
+ void p_print_lcd_line(uint8_t line_nr);
+ void p_calc_delay_value(void);
+-// lcd functions size=1:1 (144px x 160px)
+-uint32_t p_print_tile_line_part(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t tile_pixel_mask);
+-uint32_t p_print_tile_line(uint32_t tile_ram_adr, uint32_t lcd_adr);
+-void p_print_spr_tile_line(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p);
+-void p_print_spr_tile_line_mirror_x(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p);
+-void p_print_spr_tile_line_behind(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p);
+-void p_print_spr_tile_line_mirror_x_behind(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p);
+-void p_clr_dummy(uint32_t lcd_adr);
+-void p_clr_left_1(uint32_t lcd_adr);
+-void p_clr_right_1(uint32_t lcd_adr);
+-void p_copy_line_dummy(uint32_t lcd_adr);
+-void p_copy_line(uint32_t lcd_adr);
+-// lcd functions size=2:1 (288px x 320px)
+-uint32_t p_print_tile_line_part_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t tile_pixel_mask);
+-uint32_t p_print_tile_line_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr);
+-void p_print_spr_tile_line_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p);
+-void p_print_spr_tile_line_mirror_x_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p);
+-void p_print_spr_tile_line_behind_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p);
+-void p_print_spr_tile_line_mirror_x_behind_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p);
+-void p_clr_left_1_DOUBLE(uint32_t lcd_adr);
+-void p_clr_right_1_DOUBLE(uint32_t lcd_adr);
+-void p_copy_line_DOUBLE(uint32_t lcd_adr);
+-
+-
+-
+ 
+ 
+ //--------------------------------------------------------------
+@@ -107,43 +78,35 @@
+ 
+ 
+ 	GB.mem_ctrl.logo_check = 0;
+-	GB.mem_ctrl.type = 0;
++	memoryControllerType = 0;
+ 	GB.mem_ctrl.rom_size = 0;
+ 	GB.mem_ctrl.ram_size = 0;
+ 	GB.mem_ctrl.rom_bank_nr = 0;
+-	GB.mem_ctrl.bank_offset = 0;
+-	GB.mem_ctrl.sdram = (uint8_t *)(SDRAM_CARTRIDGE_START_ADR);
++	memoryControllerBankOffset = 0;
++//	GB.mem_ctrl.sdram = (uint8_t *)(SDRAM_CARTRIDGE_START_ADR);
+ 
+ 
+ 	GB.status = EMULATOR_STOPPED;
+ 	GB.err_nr = ERROR_NONE;
+ 
+-	GB.screen.mode = 0;
+-	GB.screen.x_mul = 1;
+-	GB.screen.fptr_ptlp = p_print_tile_line_part;
+-	GB.screen.fptr_ptl = p_print_tile_line;
+-	GB.screen.fptr_pstl[0][0] = p_print_spr_tile_line;
+-	GB.screen.fptr_pstl[0][1] = p_print_spr_tile_line_mirror_x;
+-	GB.screen.fptr_pstl[1][0] = p_print_spr_tile_line_behind;
+-	GB.screen.fptr_pstl[1][1] = p_print_spr_tile_line_mirror_x_behind;
+-	GB.screen.fct_clrl[0][0] = p_clr_dummy;
+-	GB.screen.fct_clrl[1][0] = p_clr_left_1;
+-	GB.screen.fct_clrr[0][0] = p_clr_dummy;
+-	GB.screen.fct_clrr[1][0] = p_clr_right_1;
+-	GB.screen.fct_clrl[0][1] = p_clr_dummy;
+-	GB.screen.fct_clrl[1][1] = p_clr_left_1_DOUBLE;
+-	GB.screen.fct_clrr[0][1] = p_clr_dummy;
+-	GB.screen.fct_clrr[1][1] = p_clr_right_1_DOUBLE;
+-	GB.screen.fct_copy[0][0] = p_copy_line_dummy;
+-	GB.screen.fct_copy[1][0] = p_copy_line;
+-	GB.screen.fct_copy[0][1] = p_copy_line_dummy;
+-	GB.screen.fct_copy[1][1] = p_copy_line_DOUBLE;
++//	GB.screen.x_mul = 1;
++//	GB.screen.fptr_ptlp = p_print_tile_line_part;
++//	GB.screen.fptr_ptl = p_print_tile_line;
++//	GB.screen.fptr_pstl[0][0] = p_print_spr_tile_line;
++//	GB.screen.fptr_pstl[0][1] = p_print_spr_tile_line_mirror_x;
++//	GB.screen.fptr_pstl[1][0] = p_print_spr_tile_line_behind;
++//	GB.screen.fptr_pstl[1][1] = p_print_spr_tile_line_mirror_x_behind;
++//	GB.screen.fct_clrl[0][0] = p_clr_dummy;
++//	GB.screen.fct_clrl[1][0] = p_clr_left_1;
++//	GB.screen.fct_clrr[0][0] = p_clr_dummy;
++//	GB.screen.fct_clrr[1][0] = p_clr_right_1;
++//	GB.screen.fct_clrl[0][1] = p_clr_dummy;
++//	GB.screen.fct_clrr[0][1] = p_clr_dummy;
++//	GB.screen.fct_copy[0][0] = p_copy_line_dummy;
++//	GB.screen.fct_copy[1][0] = p_copy_line;
++//	GB.screen.fct_copy[0][1] = p_copy_line_dummy;
+ 
+ 	GB.ini.ok = 0;
+-	GB.ini.bgcol1 = GB_BGND_COLOR;
+-	GB.ini.bgcol2 = GB_LOAD_BG_COLOR;
+-	GB.ini.fontcol1 = GB_FONT_COLOR;
+-	GB.ini.fontcol2 = GB_FONT_H_COLOR;
+ 	GB.ini.use_sdcard_colors = 0;
+ 	GB.ini.bg_table[0] = col_tables[DEFAULT_BG_COL_INDEX][0];
+ 	GB.ini.bg_table[1] = col_tables[DEFAULT_BG_COL_INDEX][1];
+@@ -163,19 +126,23 @@
+ 	GB.ini.keytable[7] = KEY_NR_SELEC;
+ 	GB.ini.dbg_msg = 0;
+ 
++	z80.memory = z80_memory;
+ 
+ 	#if INFO_UART_MSG != 0
+ 	UB_Uart_SendString(COM_1, "STM32F746 Gameboy emulator (UB)",CRLF);
+-	sprintf(strbuf,"version: %s",GB_EMULATOR_VERSION);
+-	UB_Uart_SendString(COM_1, strbuf,CRLF);
+-	sprintf(strbuf,"date: %s",GB_EMULATOR_DATE);
+-	UB_Uart_SendString(COM_1, strbuf,CRLF);
++	am_util_stdio_printf("version: %s",GB_EMULATOR_VERSION);
++	am_util_stdio_printf("%s\n",strbuf);
++	am_util_stdio_printf("date: %s",GB_EMULATOR_DATE);
++	am_util_stdio_printf("%s\n",strbuf);
+ 	#endif
+ }
+ 
+ //--------------------------------------------------------------
+ // boot gameboy cartridge from flash
+ //--------------------------------------------------------------
++
++extern UB_GB_File Stored_ROM;
++
+ void gameboy_boot_flash(uint8_t game_nr)
+ {
+ 
+@@ -187,84 +154,9 @@
+ 
+ 	// load cartridge from flash (without reset of the z80)
+ 	if(game_nr == 0) {
+-		z80_reinit(Tetris_ROM.table, Tetris_ROM.size);
+-	}
+-	else if(game_nr == 1) {
+-		z80_reinit(castelian.table, castelian.size);
+-	}
+-	else if(game_nr == 2) {
+-		z80_reinit(boulder.table, boulder.size);
+-	}
+-	else if(game_nr == 3) {
+-		z80_reinit(Kwirk_ROM.table, Kwirk_ROM.size);
+-	}
+-
+-	// check cartridge data
+-	p_check_cartridge();
+-}
+-
+-
+-//--------------------------------------------------------------
+-// boot gameboy cartridge from ram (loaded from uart) [size max 32kByte]
+-//--------------------------------------------------------------
+-void gameboy_boot_ram(void)
+-{
+-	uint32_t n;
+-	uint8_t header[Boot_ROM.size];
+-
+-	// init
+-	p_shadow_init();
+-
+-	// copy header
+-	for(n=0; n<Boot_ROM.size; n++) {
+-		header[n] = z80.memory[n];
+-	}
+-
+-	// load bootloader
+-	p_start_bootloader();
+-
+-	// restore header
+-	for(n=0; n<Boot_ROM.size; n++) {
+-		z80.memory[n] = header[n];
+-	}
+-
+-	// check cartridge data
+-	p_check_cartridge();
+-}
+-
+-//--------------------------------------------------------------
+-// boot gameboy cartridge from sdram (loaded from sdcard)
+-//--------------------------------------------------------------
+-void gameboy_boot_sdram(void)
+-{
+-	uint32_t n;
+-	uint32_t adr = (SDRAM_CARTRIDGE_START_ADR - SDRAM_START_ADR);
+-	uint8_t header[Boot_ROM.size];
+-
+-	// copy first bank from sdram into memory
+-	for(n=0;n<ROM_SIZE;n++) {
+-		z80.memory[n] = UB_SDRAM_Read8b(adr + n);
+-	}
+-
+-	// init
+-	p_shadow_init();
+-
+-	// copy header
+-	for(n=0; n<Boot_ROM.size; n++) {
+-		header[n] = z80.memory[n];
+-	}
+-
+-	// load bootloader
+-	p_start_bootloader();
+-
+-	// restore header
+-	for(n=0; n<Boot_ROM.size; n++) {
+-		z80.memory[n] = header[n];
++		z80_reinit(Stored_ROM.table, Stored_ROM.size);
+ 	}
+ 
+-	// set pointer to cartridge start
+-	z80.rom = GB.mem_ctrl.sdram;
+-
+ 	// check cartridge data
+ 	p_check_cartridge();
+ }
+@@ -278,11 +170,11 @@
+ 	uint8_t ypos;
+ 	uint8_t hblank = 0;
+ 
+-	if(GB.timing.delay_cnt > 0) {
+-		// skip execution to slow down emulator
+-		GB.timing.delay_cnt--;
+-		return;
+-	}
++//	if(GB.timing.delay_cnt > 0) {
++//		// skip execution to slow down emulator
++//		GB.timing.delay_cnt--;
++//		return;
++//	}
+ 
+ 	//--------------------------------------
+ 	// execute single z80 opcode
+@@ -298,14 +190,14 @@
+ 			Shadow.tim_cycl_cnt = 0;
+ 
+ 			// increment timer register
+-			tim_value = z80.memory[TIMA_ADR];
++			tim_value = z80.memory[TIMA_ADR - ROM_SIZE];
+ 			tim_value++;
+ 			if(tim_value==0) {
+ 				// reload
+-				tim_value = z80.memory[TMA_ADR];
++				tim_value = z80.memory[TMA_ADR - ROM_SIZE];
+ 				p_set_int_50(); // set flag
+ 			}
+-			z80.memory[TIMA_ADR] = tim_value;
++			z80.memory[TIMA_ADR - ROM_SIZE] = tim_value;
+ 		}
+ 	}
+ 
+@@ -316,9 +208,9 @@
+ 	if(Shadow.div_cycl_cnt >= DIV_COUNTER_CYCLES) {
+ 		Shadow.div_cycl_cnt = 0;
+ 		// increment divider register
+-		div_value = z80.memory[DIV_ADR];
++		div_value = z80.memory[DIV_ADR - ROM_SIZE];
+ 		div_value++;
+-		z80.memory[DIV_ADR] = div_value;
++		z80.memory[DIV_ADR - ROM_SIZE] = div_value;
+ 	}
+ 
+ 	//--------------------------------------
+@@ -333,18 +225,18 @@
+ 		//--------------------------------------
+ 		// increment Ypos
+ 		//--------------------------------------
+-		ypos = z80.memory[LY_ADR];
++		ypos = z80.memory[LY_ADR - ROM_SIZE];
+ 		ypos++; // max = 153
+ 		if(ypos>MAX_YPOS) {
+ 			ypos = 0;
+ 			// increment framecounter
+ 			GB.frame.cnt++;
+-			#ifndef DEBUG
+-			// calc delay to hit 60fps
+-			p_calc_delay_value();
+-			#endif
++//			#ifndef DEBUG
++//			// calc delay to hit 60fps
++//			p_calc_delay_value();
++//			#endif
+ 		}
+-		z80.memory[LY_ADR] = ypos;
++		z80.memory[LY_ADR - ROM_SIZE] = ypos;
+ 
+ 		// lines are printed from ypos: 0..143
+ 		if(ypos<GB_LCD_HEIGHT) {
+@@ -358,15 +250,15 @@
+ 		// set CONC bit
+ 		// (if ypos == LYC)
+ 		//--------------------------------------
+-		if(ypos == z80.memory[LYC_ADR]) {
+-			z80.memory[STAT_ADR] |= STAT_ADR_CONC;
++		if(ypos == z80.memory[LYC_ADR - ROM_SIZE]) {
++			z80.memory[STAT_ADR - ROM_SIZE] |= STAT_ADR_CONC;
+ 			Shadow.lcdc_status |= STAT_ADR_CONC; // bit2
+-			if((z80.memory[STAT_ADR] & STAT_ADR_LYC) != 0) {
++			if((z80.memory[STAT_ADR - ROM_SIZE] & STAT_ADR_LYC) != 0) {
+ 				p_set_int_48();
+ 			}
+ 		}
+ 		else {
+-			z80.memory[STAT_ADR] &= ~STAT_ADR_CONC;
++			z80.memory[STAT_ADR - ROM_SIZE] &= ~STAT_ADR_CONC;
+ 			Shadow.lcdc_status &= ~STAT_ADR_CONC; // bit2
+ 		}
+ 	}
+@@ -375,18 +267,18 @@
+ 	// check interrupts
+ 	//--------------------------------------
+ 	if(z80.ime_flag != 0) {
+-		if(z80.memory[IF_ADR] != 0) {
+-			if((z80.memory[IE_ADR] & z80.memory[IF_ADR] & IF_ADR_VBLANK) != 0) {
++		if(z80.memory[IF_ADR - ROM_SIZE] != 0) {
++			if((z80.memory[IE_ADR - ROM_SIZE] & z80.memory[IF_ADR - ROM_SIZE] & IF_ADR_VBLANK) != 0) {
+ 				p_clr_int_40(); // clear flag
+ 				RST(z80.reg.pc, ISR_ADR_VBLANK); // jmp to ISR 0x40
+ 			}
+ 
+-			if((z80.memory[IE_ADR] & z80.memory[IF_ADR] & IF_ADR_LCDC) != 0) {
++			if((z80.memory[IE_ADR - ROM_SIZE] & z80.memory[IF_ADR - ROM_SIZE] & IF_ADR_LCDC) != 0) {
+ 				p_clr_int_48(); // clear flag
+ 				RST(z80.reg.pc, ISR_ADR_LCDCS); // jmp to ISR 0x48
+ 			}
+ 
+-			if((z80.memory[IE_ADR] & z80.memory[IF_ADR] & IF_ADR_TIMER) != 0) {
++			if((z80.memory[IE_ADR - ROM_SIZE] & z80.memory[IF_ADR - ROM_SIZE] & IF_ADR_TIMER) != 0) {
+ 				p_clr_int_50(); // clear flag
+ 				RST(z80.reg.pc, ISR_ADR_TIMER); // jmp to ISR 0x50
+ 			}
+@@ -396,7 +288,7 @@
+ 		// interrupts disabled
+ 		if(z80.halt_mode != 0) {
+ 			// halt active
+-			if(z80.memory[IF_ADR] != 0) {
++			if(z80.memory[IF_ADR - ROM_SIZE] != 0) {
+ 				// skip halt by an active ISR flag
+ 				z80.halt_skip = 1;
+ 			}
+@@ -411,8 +303,8 @@
+ 		GB.err_nr = ERROR_OPCODE;
+ 		#if ERROR_UART_MSG != 0
+ 		UB_Uart_SendString(COM_1, "opcode error",CRLF);
+-		sprintf(strbuf,"adr: %04x",z80.reg.pc);
+-		UB_Uart_SendString(COM_1, strbuf,CRLF);
++		am_util_stdio_printf("adr: %04x",z80.reg.pc);
++		am_util_stdio_printf("%s\n",strbuf);
+ 		#endif
+ 	}
+ }
+@@ -521,13 +413,13 @@
+ 	uint8_t n,temp_value;
+ 
+ 	if(adr==IO_ADR) { // write joypad
+-		if((value & 0x30) == 0x00) {z80.memory[IO_ADR] = 0xCF;return;}
+-		if((value & 0x30) == 0x10) {z80.memory[IO_ADR] = GB.key.code_btn;return;}
+-		if((value & 0x30) == 0x20) {z80.memory[IO_ADR] = GB.key.code_cursor;return;}
+-		if((value & 0x30) == 0x30) {z80.memory[IO_ADR] = 0xFF;return;}
++		if((value & 0x30) == 0x00) {z80.memory[IO_ADR - ROM_SIZE] = 0xCF;return;}
++		if((value & 0x30) == 0x10) {z80.memory[IO_ADR - ROM_SIZE] = GB.key.code_btn;return;}
++		if((value & 0x30) == 0x20) {z80.memory[IO_ADR - ROM_SIZE] = GB.key.code_cursor;return;}
++		if((value & 0x30) == 0x30) {z80.memory[IO_ADR - ROM_SIZE] = 0xFF;return;}
+ 	}
+ 	else if(adr == DIV_ADR) {
+-		z80.memory[DIV_ADR] = 0;
++		z80.memory[DIV_ADR - ROM_SIZE] = 0;
+ 
+ 	}
+ 	else if(adr==TAC_ADR) { // write timer control
+@@ -578,9 +470,9 @@
+ 	}
+ 	else if(adr == STAT_ADR) {
+ 		// bit0..2 = read only
+-		n = (z80.memory[STAT_ADR] & 0xF8);
++		n = (z80.memory[STAT_ADR - ROM_SIZE] & 0xF8);
+ 		n |= (Shadow.lcdc_status & 0x07);
+-		z80.memory[STAT_ADR] = n;
++		z80.memory[STAT_ADR - ROM_SIZE] = n;
+ 
+ 		// emulating gameboy bug:
+ 		// writing to register 0xFF41 (any value) during lcd mode-0 or mode-1 sets bit1 of register 0xFF0F
+@@ -589,15 +481,15 @@
+ 		}
+ 	}
+ 	else if(adr == LY_ADR) {
+-		z80.memory[LY_ADR] = 0;
++		z80.memory[LY_ADR - ROM_SIZE] = 0;
+ 
+ 	}
+ 	else if(adr==DMA_ADR) {
+ 		// copy memory data into OAM array
+ 		temp_adr = (value<<8);
+ 		for(n=0;n<OAM_SPRITE_SIZE;n++) {
+-			temp_value=z80.memory[temp_adr+n];
+-			z80.memory[(OAM_SPRITE_ADR+n)] = temp_value;
++			temp_value=z80.memory[temp_adr + n - ROM_SIZE];
++			z80.memory[(OAM_SPRITE_ADR + n - ROM_SIZE)] = temp_value;
+ 		}
+ 	}
+ 	else if(adr == BGRDPAL_ADR) {
+@@ -637,7 +529,7 @@
+ {
+ 	uint8_t u8;
+ 
+-	if(GB.mem_ctrl.type == 0) return;
++	if(memoryControllerType == 0) return;
+ 
+ 	if(adr >= MBC1_WR_MODE_SELECT) {
+ 		// 0x6000..0x7FFF: RAM/ROM mode select
+@@ -656,7 +548,7 @@
+ 
+ 		// calculate bank offset
+ 		u8 = GB.mem_ctrl.rom_bank_nr -1;
+-		GB.mem_ctrl.bank_offset = (MBC1_RD_BANK_SIZE * u8);
++		memoryControllerBankOffset = (MBC1_RD_BANK_SIZE * u8);
+ 	}
+ 	else if(adr >= MBC1_WR_BANK_LO) {
+ 		// 0x2000..0x3FFF: rom bank nr (lo)
+@@ -667,7 +559,7 @@
+ 
+ 		// calculate bank offset
+ 		u8 = GB.mem_ctrl.rom_bank_nr -1;
+-		GB.mem_ctrl.bank_offset = (MBC1_RD_BANK_SIZE * u8);
++		memoryControllerBankOffset = (MBC1_RD_BANK_SIZE * u8);
+ 	}
+ 	else {
+ 		// 0x0000..0x1FFF: ram enable
+@@ -678,69 +570,6 @@
+ 	}
+ }
+ 
+-
+-
+-//--------------------------------------------------------------
+-// read from rom (0x0000..0x8000)
+-// (emulation of memory bank controller)
+-//--------------------------------------------------------------
+-uint8_t gameboy_rd_from_rom(uint16_t adr)
+-{
+-	uint8_t value;
+-	const uint8_t *ptr;
+-
+-	if(GB.mem_ctrl.type == 0) return z80.memory[adr];
+-
+-	if(adr >= MBC1_RD_BANKN) {
+-		// 0x4000..0x7FFF: read bank 1..n
+-		ptr = z80.rom;
+-		ptr += GB.mem_ctrl.bank_offset;
+-		ptr += adr;
+-		value = *ptr;
+-	}
+-	else {
+-		// 0x0000..0x3FFF: read bank 0
+-		value = z80.memory[adr];
+-	}
+-
+-	return value;
+-}
+-
+-
+-
+-//--------------------------------------------------------------
+-// change screenmode
+-// 0= x:normal, y:normal
+-// 1= x:double, y:normal
+-// 2= x:normal, y:double
+-// 3= x:double, y:double
+-//--------------------------------------------------------------
+-void gameboy_set_screenmode(void)
+-{
+-
+-
+-	if((GB.screen.mode == 0) || (GB.screen.mode == 2)) {
+-		GB.screen.x_mul = 1;
+-		// set function pointer "normal"
+-		GB.screen.fptr_ptlp = p_print_tile_line_part;
+-		GB.screen.fptr_ptl = p_print_tile_line;
+-		GB.screen.fptr_pstl[0][0] = p_print_spr_tile_line;
+-		GB.screen.fptr_pstl[0][1] = p_print_spr_tile_line_mirror_x;
+-		GB.screen.fptr_pstl[1][0] = p_print_spr_tile_line_behind;
+-		GB.screen.fptr_pstl[1][1] = p_print_spr_tile_line_mirror_x_behind;
+-	}
+-	else {
+-		GB.screen.x_mul = 2;
+-		// set function pointer "double x"
+-		GB.screen.fptr_ptlp = p_print_tile_line_part_DOUBLE;
+-		GB.screen.fptr_ptl = p_print_tile_line_DOUBLE;
+-		GB.screen.fptr_pstl[0][0] = p_print_spr_tile_line_DOUBLE;
+-		GB.screen.fptr_pstl[0][1] = p_print_spr_tile_line_mirror_x_DOUBLE;
+-		GB.screen.fptr_pstl[1][0] = p_print_spr_tile_line_behind_DOUBLE;
+-		GB.screen.fptr_pstl[1][1] = p_print_spr_tile_line_mirror_x_behind_DOUBLE;
+-	}
+-}
+-
+ //--------------------------------------------------------------
+ // init shadow variables
+ //--------------------------------------------------------------
+@@ -808,22 +637,22 @@
+ 	// check nintendo logo
+ 	GB.mem_ctrl.logo_check = 0;
+ 	for(n=0; n<CARTRIDGE_LOGO_SIZE; n++) {
+-		value = z80.memory[CARTRIDGE_LOGO_ADR+n];
++		value = z80.rom[CARTRIDGE_LOGO_ADR+n];
+ 		if(value != Boot_ROM.table[BOOTROM_LOGO_ADR+n]) GB.mem_ctrl.logo_check = 1;
+ 	}
+ 
+ 	// read title
+ 	for(n=0; n<CARTRIDGE_TITLE_SIZE; n++) {
+-		GB.mem_ctrl.title[n] = z80.memory[CARTRIDGE_TITLE_ADR+n];
++		GB.mem_ctrl.title[n] = z80.rom[CARTRIDGE_TITLE_ADR+n];
+ 	}
+ 	GB.mem_ctrl.title[n]=0x00;
+ 
+ 	// read cartride type
+-	GB.mem_ctrl.type = z80.memory[CARTRIDGE_TYPE_ADR];
++	memoryControllerType = z80.rom[CARTRIDGE_TYPE_ADR];
+ 
+ 	// read rom and ram size
+-	GB.mem_ctrl.rom_size = z80.memory[CARTRIDGE_ROM_SIZE_ADR];
+-	GB.mem_ctrl.ram_size = z80.memory[CARTRIDGE_RAM_SIZE_ADR];
++	GB.mem_ctrl.rom_size = z80.rom[CARTRIDGE_ROM_SIZE_ADR];
++	GB.mem_ctrl.ram_size = z80.rom[CARTRIDGE_RAM_SIZE_ADR];
+ 
+ 
+ 	// check logo
+@@ -840,7 +669,7 @@
+ 	}
+ 
+ 	// check type
+-	if(GB.mem_ctrl.type > SUPPORTED_MBC_VERSION) {
++	if(memoryControllerType > SUPPORTED_MBC_VERSION) {
+ 		GB.status = EMULATOR_ERROR;
+ 		GB.err_nr = ERROR_MBC;
+ 		#if ERROR_UART_MSG != 0
+@@ -856,166 +685,10 @@
+ 	}
+ 
+ 	GB.mem_ctrl.rom_bank_nr = 0;
+-	GB.mem_ctrl.bank_offset = 0;
+-}
+-
+-
+-//--------------------------------------------------------------
+-// clear/set interrupt flags
+-//--------------------------------------------------------------
+-void p_clr_int_40(void)
+-{
+-	// clear flag
+-	z80.ime_flag = 0; // will be set again by RETI
+-	z80.memory[IF_ADR] &= ~IF_ADR_VBLANK;
+-}
+-//--------------------------------------------------------------
+-void p_set_int_40(void)
+-{
+-	// set flag
+-	z80.memory[IF_ADR] |= IF_ADR_VBLANK;
+-}
+-//--------------------------------------------------------------
+-void p_clr_int_48(void)
+-{
+-	// clear flag
+-	z80.ime_flag = 0; // will be set again by RETI
+-	z80.memory[IF_ADR] &= ~IF_ADR_LCDC;
+-}
+-//--------------------------------------------------------------
+-void p_set_int_48(void)
+-{
+-	// set flag
+-	z80.memory[IF_ADR] |= IF_ADR_LCDC;
+-}
+-//--------------------------------------------------------------
+-void p_clr_int_50(void)
+-{
+-	// clear flag
+-	z80.ime_flag = 0; // will be set again by RETI
+-	z80.memory[IF_ADR] &= ~IF_ADR_TIMER;
+-}
+-//--------------------------------------------------------------
+-void p_set_int_50(void)
+-{
+-	// set flag
+-	z80.memory[IF_ADR] |= IF_ADR_TIMER;
++	memoryControllerBankOffset = 0;
+ }
+-//--------------------------------------------------------------
+ 
+ 
+-//--------------------------------------------------------------
+-// reset lcd mode
+-// (reset mode to 2)
+-//--------------------------------------------------------------
+-void p_reset_lcd_mode(void)
+-{
+-	// reset counter
+-	Shadow.mcu_cycl_cnt = 0;
+-	Shadow.lcd_mode = 2;
+-	p_set_lcd_mode(Shadow.lcd_mode);
+-}
+-
+-
+-//--------------------------------------------------------------
+-// set new lcd mode [0..3]
+-// (set bit0+bit1 of STAT register)
+-//--------------------------------------------------------------
+-void p_set_lcd_mode(uint8_t new_mode)
+-{
+-	uint8_t value;
+-
+-	value = z80.memory[STAT_ADR];
+-	value &= 0xFC;
+-	value |= new_mode;
+-	z80.memory[STAT_ADR] = value;
+-	Shadow.lcdc_status = value; // bit0..2
+-}
+-
+-
+-//--------------------------------------------------------------
+-// calculate new lcd mode (0..3)
+-// mode0: H-Blank period
+-// mode1: V-Blank period
+-// mode2: LCD is reading from AOM memory
+-// mode3: LCD is reading from AOM and VRAM
+-// ret_value : 1=time for next scanline
+-//--------------------------------------------------------------
+-uint8_t p_calc_lcd_mode(void)
+-{
+-	uint8_t ret_value = 0;
+-
+-	// increment cycle counter
+-	Shadow.mcu_cycl_cnt += z80.cycles;
+-
+-	if(Shadow.lcd_mode == 2) {
+-		// LCD is reading from AOM memory
+-		if(Shadow.mcu_cycl_cnt >= LCD_MODE2_CYCLES) {
+-			// mode2 timeout
+-			Shadow.mcu_cycl_cnt = 0;
+-			Shadow.lcd_mode = 3;
+-			p_set_lcd_mode(Shadow.lcd_mode);
+-		}
+-	}
+-	else if(Shadow.lcd_mode == 3) {
+-		// LCD is reading from AOM and VRAM
+-		if(Shadow.mcu_cycl_cnt >= LCD_MODE3_CYCLES) {
+-			// mode3 timeout
+-			Shadow.mcu_cycl_cnt = 0;
+-			Shadow.lcd_mode = 0;
+-			p_set_lcd_mode(Shadow.lcd_mode);
+-			// set interrupt flag if interrupt is enable
+-			if((z80.memory[STAT_ADR] & STAT_ADR_HBLANK) != 0) {
+-				p_set_int_48(); // set flag
+-			}
+-		}
+-	}
+-	else if(Shadow.lcd_mode == 0) {
+-		// H-Blank period
+-		if(Shadow.mcu_cycl_cnt >= LCD_MODE0_CYCLES) {
+-			// mode0 timeout
+-			Shadow.mcu_cycl_cnt = 0;
+-			if(z80.memory[LY_ADR] == (VBLANK_START-1)) {
+-				// vblank start
+-				Shadow.lcd_mode = 1;
+-				p_set_lcd_mode(Shadow.lcd_mode);
+-				// set interrupt flag if interrupt is enable
+-				if((z80.memory[STAT_ADR] & STAT_ADR_VBLANK) != 0) {
+-					p_set_int_48(); // set flag
+-				}
+-				// set vblank isr
+-				p_set_int_40();
+-			}
+-			else {
+-				Shadow.lcd_mode = 2;
+-				p_set_lcd_mode(Shadow.lcd_mode);
+-				// set interrupt flag if interrupt is enable
+-				if((z80.memory[STAT_ADR] & STAT_ADR_OAM) != 0) {
+-					p_set_int_48(); // set flag
+-				}
+-			}
+-			ret_value = 1; // end of hblank period, next line
+-		}
+-	}
+-	else if(Shadow.lcd_mode == 1) {
+-		// V-Blank period
+-		if(Shadow.mcu_cycl_cnt >= LCD_LINE_CYCLES) {
+-			Shadow.mcu_cycl_cnt = 0;
+-			if(z80.memory[LY_ADR] == MAX_YPOS) {
+-				// mode1 timeout
+-				Shadow.lcd_mode = 2;
+-				p_set_lcd_mode(Shadow.lcd_mode);
+-				// set interrupt flag if interrupt is enable
+-				if((z80.memory[STAT_ADR] & STAT_ADR_OAM) != 0) {
+-					p_set_int_48(); // set flag
+-				}
+-			}
+-			ret_value = 1; // next line
+-		}
+-	}
+-
+-	return ret_value;
+-}
+ 
+ 
+ //--------------------------------------------------------------
+@@ -1039,6 +712,7 @@
+ 	GB.timing.delay_cnt = GB.timing.delay_ovf;
+ }
+ 
++extern void updateLineBW(uint8_t line);
+ 
+ //--------------------------------------------------------------
+ // draw a single lcd line (160pixel)
+@@ -1052,8 +726,6 @@
+ 	uint8_t scrolly;
+ 	uint8_t scrollx;
+ 	uint8_t scrolled_line; // must be uint8 !!
+-	uint8_t mode_y;
+-	uint8_t block_y;
+ 	// tile
+ 	uint32_t lcd_adr;
+ 	uint8_t tile_index;
+@@ -1096,45 +768,23 @@
+ 
+ 
+ 	// if lcd disabled, exit function
+-	if((z80.memory[LCDC_ADR] & LCDC_ADR_LCD) == 0) return;
++	if((z80.memory[LCDC_ADR - ROM_SIZE] & LCDC_ADR_LCD) == 0) return;
+ 
+ 
+ 	//-----------------------------------------------------------------------------------
+ 	// calculate startpos on screen
+ 	// set marker if we must copy this line after rendering
+ 	//-----------------------------------------------------------------------------------
+-	if((GB.screen.mode & 0x02) == 0) {
+-		// y size = normal
+-		lcd_start_adr=BG_START_ADR+(LCD_LINE_LENGTH*(line_nr));
+-		mode_y = 0;
+-	}
+-	else {
+-		// y size = double
+-		//-----------------------------------------------------------------------------------
+-		// hint: because of the limited size of the lcd screen height (max 272 pixel)
+-		// we cant copy every line (18 tiles * 8 pixel * 2 = 288 pixel)
+-		// so we dont copy the first line of each block
+-		// (18 tiles * (1pixel + (7pixel *2)) = 270 pixel)
+-		//-----------------------------------------------------------------------------------
+-		block_y = (line_nr >> 3); // 0..17
+-		if((line_nr % 8) == 0) {
+-			// draw the line but dont copy this line
+-			lcd_start_adr=BG_START_ADR+(LCD_LINE_LENGTH*((line_nr<<1)-block_y));
+-			mode_y = 0;
+-		}
+-		else {
+-			// draw the line and copy this line
+-			lcd_start_adr=BG_START_ADR+(LCD_LINE_LENGTH*((line_nr<<1)-(block_y+1)));
+-			mode_y = 1;
+-		}
+-	}
++
++	// y size = normal no support for double y anymore
++	lcd_start_adr = 0;
+ 
+ 	lcd_adr = lcd_start_adr;
+ 	lcd_new_adr = lcd_start_adr;
+ 
+ 	// add scroll register values
+-	scrolly = z80.memory[SCY_ADR];			// y scroll value
+-	scrollx = z80.memory[SCX_ADR];			// x scroll value
++	scrolly = z80.memory[SCY_ADR - ROM_SIZE];			// y scroll value
++	scrollx = z80.memory[SCX_ADR - ROM_SIZE];			// x scroll value
+ 
+ 	scrolled_line = line_nr + scrolly;					// ypos of current line in bg map [0..255]
+ 	bg_tile_ypos = (scrolled_line>>3);					// ypos of current tile in bg map [0..31]
+@@ -1145,9 +795,9 @@
+ 	//--------------------------------------------------------------
+ 	// check if window is enabled and visible in this line
+ 	//--------------------------------------------------------------
+-	if((z80.memory[LCDC_ADR] & LCDC_ADR_WDE) != 0) {
+-		win_xp = z80.memory[WIN_XP_ADR]-WIN_DX;
+-		win_yp = z80.memory[WIN_YP_ADR];
++	if((z80.memory[LCDC_ADR - ROM_SIZE] & LCDC_ADR_WDE) != 0) {
++		win_xp = z80.memory[WIN_XP_ADR - ROM_SIZE]-WIN_DX;
++		win_yp = z80.memory[WIN_YP_ADR - ROM_SIZE];
+ 
+ 		if((win_xp < GB_LCD_WIDTH) && (win_xp >= 0) && (win_yp <= line_nr)) {
+ 			// calculate how many bg and windows pixels needed
+@@ -1160,7 +810,7 @@
+ 	//--------------------------------------------------------------
+ 	// if background enabled, draw all background tiles from this line into the LCD line
+ 	//--------------------------------------------------------------
+-	if(((z80.memory[LCDC_ADR] & LCDC_ADR_BGD) != 0) && (bg_pixel_cnt != 0)) {
++	if(((z80.memory[LCDC_ADR - ROM_SIZE] & LCDC_ADR_BGD) != 0) && (bg_pixel_cnt != 0)) {
+ 		bg_xpos = (scrollx >> 3);
+ 		tile_pixel = (scrollx % 8);
+ 
+@@ -1172,10 +822,10 @@
+ 		tile_pixel_mask1 &= tile_pixel_mask2;
+ 
+ 		// draw first tile (or part of of a tile)
+-		tile_index=z80.memory[bg_ram_adr_0+bg_xpos];			// read tile index from background tile map
++		tile_index=z80.memory[bg_ram_adr_0+bg_xpos - ROM_SIZE];			// read tile index from background tile map
+ 		tile_nr = Shadow.tile_table[tile_index];			// convert index into tile nr [0..255]
+ 		tile_ram_adr=(tile_nr<<4)+bg_yadr+(Shadow.WBGTD_start_adr);	// calculate adr of background tile line
+-		lcd_new_adr = GB.screen.fptr_ptlp(tile_ram_adr, lcd_adr, tile_pixel_mask1); // draw n px of background tile
++		lcd_new_adr = p_print_tile_line_part(tile_ram_adr, lcd_adr, line_nr, tile_pixel_mask1); // draw n px of background tile
+ 		bg_pixel_cnt -= Shadow.px_cnt;
+ 		bg_xpos++;
+ 
+@@ -1183,10 +833,10 @@
+ 			// draw center tiles (each with 8px)
+ 			lcd_adr = lcd_new_adr;
+ 			for(n=0; n<=(bg_pixel_cnt-8); n+=8) {
+-				tile_index=z80.memory[bg_ram_adr_0+bg_xpos];			// read tile index from background tile map
++				tile_index=z80.memory[bg_ram_adr_0+bg_xpos - ROM_SIZE];			// read tile index from background tile map
+ 				tile_nr = Shadow.tile_table[tile_index];			// convert index into tile nr [0..255]
+ 				tile_ram_adr=(tile_nr<<4)+bg_yadr+(Shadow.WBGTD_start_adr);	// calculate adr of background tile line
+-				lcd_new_adr = GB.screen.fptr_ptl(tile_ram_adr, lcd_new_adr);			// draw 8px of background tile
++				lcd_new_adr = p_print_tile_line(tile_ram_adr, lcd_new_adr, line_nr);			// draw 8px of background tile
+ 				bg_xpos++;
+ 				(bg_xpos &= 0x1F); // 0..31
+ 			}
+@@ -1195,10 +845,10 @@
+ 		if(bg_pixel_cnt > 0) {
+ 			// draw last part of a tile (n px)
+ 			tile_pixel_mask1 = tile_mask[1][bg_pixel_cnt];
+-			tile_index=z80.memory[bg_ram_adr_0+bg_xpos];			// read tile index from background tile map
++			tile_index=z80.memory[bg_ram_adr_0+bg_xpos - ROM_SIZE];			// read tile index from background tile map
+ 			tile_nr = Shadow.tile_table[tile_index];			// convert index into tile nr [0..255]
+ 			tile_ram_adr=(tile_nr<<4)+bg_yadr+(Shadow.WBGTD_start_adr);	// calculate adr of background tile line
+-			lcd_new_adr = GB.screen.fptr_ptlp(tile_ram_adr, lcd_new_adr, tile_pixel_mask1); // draw n px of background tile
++			lcd_new_adr = p_print_tile_line_part(tile_ram_adr, lcd_new_adr, line_nr, tile_pixel_mask1); // draw n px of background tile
+ 		}
+ 	}
+ 
+@@ -1215,10 +865,10 @@
+ 		if(win_pixel_cnt >= 8) {
+ 			// draw center tiles (each with 8px)
+ 			for(n=0;n<=(win_pixel_cnt-8);n+=8) {
+-				tile_index=z80.memory[win_ram_adr];			// read tile index from window tile map
++				tile_index=z80.memory[win_ram_adr - ROM_SIZE];			// read tile index from window tile map
+ 				tile_nr = Shadow.tile_table[tile_index];	// convert index into tile nr [0..255]
+ 				tile_ram_adr=(tile_nr<<4)+win_yadr+(Shadow.WBGTD_start_adr);	// calculate adr of window tile line
+-				lcd_new_adr = GB.screen.fptr_ptl(tile_ram_adr, lcd_new_adr);  // draw 8px of window tile
++				lcd_new_adr = p_print_tile_line(tile_ram_adr, lcd_new_adr, line_nr);  // draw 8px of window tile
+ 				win_ram_adr++;
+ 			}
+ 			win_pixel_cnt -= n;
+@@ -1226,20 +876,15 @@
+ 		if(win_pixel_cnt > 0) {
+ 			// draw last part of a tile (n px)
+ 			tile_pixel_mask1 = tile_mask[1][win_pixel_cnt];
+-			tile_index=z80.memory[win_ram_adr];			// read tile index from window tile map
++			tile_index=z80.memory[win_ram_adr - ROM_SIZE];			// read tile index from window tile map
+ 			tile_nr = Shadow.tile_table[tile_index];			// convert index into tile nr [0..255]
+ 			tile_ram_adr=(tile_nr<<4)+win_yadr+(Shadow.WBGTD_start_adr);	// calculate adr of window tile line
+-			lcd_new_adr = GB.screen.fptr_ptlp(tile_ram_adr, lcd_new_adr, tile_pixel_mask1); // draw n px of window tile
++			lcd_new_adr = p_print_tile_line_part(tile_ram_adr, lcd_new_adr, line_nr, tile_pixel_mask1); // draw n px of window tile
+ 		}
+ 	}
+ 
+ 	// if sprites disabled, exit function
+-	if((z80.memory[LCDC_ADR] & LCDC_ADR_OBJE) == 0) {
+-		//--------------------------------------------------------------
+-		// copy line
+-		//--------------------------------------------------------------
+-		GB.screen.fct_copy[mode_y][(GB.screen.mode & 0x01)](lcd_start_adr);
+-
++	if((z80.memory[LCDC_ADR - ROM_SIZE] & LCDC_ADR_OBJE) == 0) {
+ 		return;
+ 	}
+ 
+@@ -1251,23 +896,23 @@
+ 	lcd_adr=lcd_start_adr;
+ 	for(n=0;n<OAM_SPRITE_CNT;n++) {
+ 		// read y pos of sprite
+-		spr_sy=z80.memory[spr_oam_adr];
++		spr_sy=z80.memory[spr_oam_adr - ROM_SIZE];
+ 		// calculate start and end pos of sprite on screen (y)
+ 		spr_ystart = spr_sy-SPRITE_DY;
+ 		spr_yend = spr_ystart+Shadow.sprite_height;
+ 		// check if sprite visible at this line
+ 		if((spr_ystart <= line_nr) && (spr_yend > line_nr)) {
+ 			// read x pos of sprite
+-			spr_sx=z80.memory[(spr_oam_adr+1)];
++			spr_sx=z80.memory[(spr_oam_adr + 1 - ROM_SIZE)];
+ 			// calculate start and end pos of sprite on screen (x)
+ 			spr_xstart = spr_sx-SPRITE_DX;
+ 			spr_xend = spr_xstart+SPRITE_WIDTH;
+ 			// check if sprite visible in screen width
+ 			if((spr_xstart < GB_LCD_WIDTH) && (spr_xend > 0)) {
+ 				// read attribute flags of sprite
+-				spr_sa=z80.memory[(spr_oam_adr+3)];
++				spr_sa=z80.memory[(spr_oam_adr + 3 - ROM_SIZE)];
+ 				// read tile nr of sprite
+-				tile_nr=z80.memory[spr_oam_adr+2];
++				tile_nr=z80.memory[spr_oam_adr + 2 - ROM_SIZE];
+ 				if(Shadow.sprite_height == 16) {
+ 					if((line_nr >= (spr_yend-8)) ^ ((spr_sa & SPRITE_ATR_FLIPY) != 0)) {
+ 						// second half of sprite
+@@ -1284,14 +929,28 @@
+ 				if((spr_sa & SPRITE_ATR_FLIPY) != 0) spr_yline = spr_yline ^ 0x07;
+ 				spr_yadr = (spr_yline << 1); // adr of the line for sprite tile [0,2,4,6,8,10,12,14]
+ 				tile_ram_adr=(tile_nr<<4)+spr_yadr+OBJTD_START_ADR_1; // calculate adr of sprite tile line
+-				spr_adr = lcd_adr+(spr_xstart << GB.screen.x_mul); // calculate lcd adr
++				spr_adr = lcd_adr+spr_xstart; // calculate lcd adr
+ 
+ 				// get sprite attributes
+ 				spr_col_palette = ((spr_sa & SPRITE_ATR_COL) >> 4);
+ 				spr_obj_index = ((spr_sa & SPRITE_ATR_PRIO) >> 7);
+ 				spr_mirror_index = ((spr_sa & SPRITE_ATR_FLIPX) >> 5);
++
+ 				// draw sprite line (8px)
+-				GB.screen.fptr_pstl[spr_obj_index][spr_mirror_index](tile_ram_adr, spr_adr, spr_col_palette);
++				if(spr_obj_index){ // render behind or not
++					if(spr_mirror_index){
++						p_print_spr_tile_line_mirror_x_behind(tile_ram_adr, spr_adr, line_nr, spr_col_palette);
++					} else {
++						p_print_spr_tile_line_behind(tile_ram_adr, spr_adr, line_nr, spr_col_palette);
++					}
++
++				} else {
++					if(spr_mirror_index){
++						p_print_spr_tile_line_mirror_x(tile_ram_adr, spr_adr, line_nr, spr_col_palette);
++					} else {
++						p_print_spr_tile_line(tile_ram_adr, spr_adr, line_nr, spr_col_palette);
++					}
++				}
+ 
+ 				if(spr_xstart<0) spr_border_index_l = 1;
+ 				if(spr_xstart>(GB_LCD_WIDTH-SPRITE_WIDTH)) spr_border_index_r = 1;
+@@ -1307,847 +966,21 @@
+ 	//--------------------------------------------------------------
+ 	// clear left and rigth border
+ 	//--------------------------------------------------------------
+-	GB.screen.fct_clrl[spr_border_index_l][(GB.screen.mode & 0x01)](lcd_start_adr);
+-	GB.screen.fct_clrr[spr_border_index_r][(GB.screen.mode & 0x01)](lcd_start_adr);
+-
+-	//--------------------------------------------------------------
+-	// copy line
+-	//--------------------------------------------------------------
+-	GB.screen.fct_copy[mode_y][(GB.screen.mode & 0x01)](lcd_start_adr);
+-}
+-
+-
+-
+-//--------------------------------------------------------------
+-// clear left or right border (to delete clipping sprites)
+-//--------------------------------------------------------------
+-void p_clr_dummy(uint32_t lcd_adr)
+-{
+-	return;
+-}
+-
+-void p_clr_left_1(uint32_t lcd_adr)
+-{
+-	UB_Graphic2D_fill_line(lcd_adr-16, 8, GB.ini.bgcol1);
+-}
+-
+-void p_clr_right_1(uint32_t lcd_adr)
+-{
+-	UB_Graphic2D_fill_line(lcd_adr+(GB_LCD_WIDTH<<1), 8, GB.ini.bgcol1);
+-}
+-
+-void p_clr_left_1_DOUBLE(uint32_t lcd_adr)
+-{
+-	UB_Graphic2D_fill_line(lcd_adr-32, 16, GB.ini.bgcol1);
+-}
+-
+-void p_clr_right_1_DOUBLE(uint32_t lcd_adr)
+-{
+-	UB_Graphic2D_fill_line(lcd_adr+(GB_LCD_WIDTH<<2), 16, GB.ini.bgcol1);
+-}
+-
+-//--------------------------------------------------------------
+-// copy line
+-//--------------------------------------------------------------
+-void p_copy_line_dummy(uint32_t lcd_adr)
+-{
+-	return;
+-}
+-
+-void p_copy_line(uint32_t lcd_adr)
+-{
+-	/*
+-	uint32_t n;
+-	uint32_t destination = lcd_adr + LCD_LINE_LENGTH;
+-
+-	for(n=0; n<GB_LCD_WIDTH;n++) {
+-		*(volatile uint16_t*)(destination) = (*(volatile uint16_t*)(lcd_adr));
+-		destination+=2;
+-		lcd_adr+=2;
+-	}
+-	*/
+-	UB_Graphic2D_copy_line(lcd_adr, GB_LCD_WIDTH);
+-}
+-
+-void p_copy_line_DOUBLE(uint32_t lcd_adr)
+-{
+-	/*
+-	uint32_t n;
+-	uint32_t destination = lcd_adr + LCD_LINE_LENGTH;
+-
+-	for(n=0; n<(GB_LCD_WIDTH<<1);n++) {
+-		*(volatile uint16_t*)(destination) = (*(volatile uint16_t*)(lcd_adr));
+-		destination+=2;
+-		lcd_adr+=2;
+-	}
+-	*/
+-	UB_Graphic2D_copy_line(lcd_adr, (GB_LCD_WIDTH<<1));
+-}
+-
+-
+-//--------------------------------------------------------------
+-// draw a part of a single line of a background tile (n pixel)
+-//--------------------------------------------------------------
+-uint32_t p_print_tile_line_part(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t tile_pixel_mask)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	Shadow.px_cnt = 0;
+-
+-	if((tile_pixel_mask & 0x80) != 0) {
+-		i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		lcd_adr += 2;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x40) != 0) {
+-		i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		lcd_adr += 2;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x20) != 0) {
+-		i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		lcd_adr += 2;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x10) != 0) {
+-		i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		lcd_adr += 2;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x08) != 0) {
+-		i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		lcd_adr += 2;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x04) != 0) {
+-		i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		lcd_adr += 2;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x02) != 0) {
+-		i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		lcd_adr += 2;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x01) != 0) {
+-		i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		lcd_adr += 2;
+-		Shadow.px_cnt++;
+-	}
+-
+-	return lcd_adr;
+-}
+-
+-//--------------------------------------------------------------
+-// draw a single line of a background tile (8pixel)
+-//--------------------------------------------------------------
+-uint32_t p_print_tile_line(uint32_t tile_ram_adr, uint32_t lcd_adr)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	lcd_adr += 2;
+-
+-	return lcd_adr;
+-}
+-
+-//--------------------------------------------------------------
+-// draw a single line of a sprite tile (8pixel, above background)
+-//--------------------------------------------------------------
+-void p_print_spr_tile_line(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-}
+-
+-//--------------------------------------------------------------
+-// draw a single line of a sprite tile (8pixel, mirror x, above background)
+-//--------------------------------------------------------------
+-void p_print_spr_tile_line_mirror_x(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-	if(i!=SPRITE_TRANSPARENT) *(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-}
+-
+-//--------------------------------------------------------------
+-// draw a single line of a sprite tile (8pixel, behind background)
+-//--------------------------------------------------------------
+-void p_print_spr_tile_line_behind(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-}
+-
+-//--------------------------------------------------------------
+-// draw a single line of a sprite tile (8pixel, mirror x, behind background)
+-//--------------------------------------------------------------
+-void p_print_spr_tile_line_mirror_x_behind(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 2;
+-
+-	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT])
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-	}
+-}
+-
+-
+-//--------------------------------------------------------------
+-// draw a part of a single line of a background tile (n pixel)
+-// size = 2:1
+-//--------------------------------------------------------------
+-uint32_t p_print_tile_line_part_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t tile_pixel_mask)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	Shadow.px_cnt = 0;
+-
+-	if((tile_pixel_mask & 0x80) != 0) {
+-		i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-		lcd_adr += 4;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x40) != 0) {
+-		i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-		lcd_adr += 4;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x20) != 0) {
+-		i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-		lcd_adr += 4;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x10) != 0) {
+-		i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-		lcd_adr += 4;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x08) != 0) {
+-		i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-		lcd_adr += 4;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x04) != 0) {
+-		i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-		lcd_adr += 4;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x02) != 0) {
+-		i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-		lcd_adr += 4;
+-		Shadow.px_cnt++;
+-	}
+-
+-	if((tile_pixel_mask & 0x01) != 0) {
+-		i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-		lcd_adr += 4;
+-		Shadow.px_cnt++;
++	if(spr_border_index_l){
++		p_clr_left_1();
+ 	}
+-
+-	return lcd_adr;
+-}
+-
+-//--------------------------------------------------------------
+-// draw a single line of a background tile (8pixel)
+-// size = 2:1
+-//--------------------------------------------------------------
+-uint32_t p_print_tile_line_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-	*(volatile uint16_t*)(lcd_adr)=Shadow.bg_col_table[i];
+-	*(volatile uint16_t*)(lcd_adr+2)=Shadow.bg_col_table[i];
+-	lcd_adr += 4;
+-
+-	return lcd_adr;
+-}
+-
+-//--------------------------------------------------------------
+-// draw a single line of a sprite tile (8pixel, above background)
+-// size = 2:1
+-//--------------------------------------------------------------
+-void p_print_spr_tile_line_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-}
+-
+-//--------------------------------------------------------------
+-// draw a single line of a sprite tile (8pixel, mirror x, above background)
+-// size = 2:1
+-//--------------------------------------------------------------
+-void p_print_spr_tile_line_mirror_x_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-		*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-	}
+-}
+-
+-//--------------------------------------------------------------
+-// draw a single line of a sprite tile (8pixel, behind background)
+-// size = 2:1
+-//--------------------------------------------------------------
+-void p_print_spr_tile_line_behind_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
++	if(spr_border_index_r){
++		p_clr_right_1();
+ 	}
+-	lcd_adr += 4;
+ 
+-	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
++#ifdef LCD_COLOR
++	displayWriteLine(line_nr + 1);
++#else
++	updateLineBW(line_nr + 1);
++#endif
+ 
+-	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+ 
+-	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+ 
+-	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+ }
+ 
+-//--------------------------------------------------------------
+-// draw a single line of a sprite tile (8pixel, mirror x, behind background)
+-// size = 2:1
+-//--------------------------------------------------------------
+-void p_print_spr_tile_line_mirror_x_behind_DOUBLE(uint32_t tile_ram_adr, uint32_t lcd_adr, uint8_t p)
+-{
+-	uint8_t h,l,i;
+-
+-	l=z80.memory[tile_ram_adr];
+-	h=z80.memory[(tile_ram_adr+1)];
+-
+-	i=col_index_h[(h&0x01)]|col_index_l[(l&0x01)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x02)]|col_index_l[(l&0x02)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x04)]|col_index_l[(l&0x04)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x08)]|col_index_l[(l&0x08)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x10)]|col_index_l[(l&0x10)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x20)]|col_index_l[(l&0x20)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+ 
+-	i=col_index_h[(h&0x40)]|col_index_l[(l&0x40)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-	lcd_adr += 4;
+-
+-	i=col_index_h[(h&0x80)]|col_index_l[(l&0x80)];
+-	if(i!=SPRITE_TRANSPARENT) {
+-		if((*(volatile uint16_t*)(lcd_adr)) == Shadow.bg_col_table[SPRITE_TRANSPARENT]) {
+-			*(volatile uint16_t*)(lcd_adr)=Shadow.obj_col_table[i][p];
+-			*(volatile uint16_t*)(lcd_adr+2)=Shadow.obj_col_table[i][p];
+-		}
+-	}
+-}
