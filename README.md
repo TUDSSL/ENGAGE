@@ -12,7 +12,7 @@ Battery-free devices can [make phone calls](https://dl.acm.org/doi/abs/10.1145/3
 
 <img src="https://github.com/TUDSSL/ENGAGE/blob/master/doc-images/intermittency.png" width="800px">
 
-Powering small embedded computer only with energy harvesting would cause frequent power failures, resulting in a constant restart of a long-running application. Let us look at the above figure which symbolically represents an execution of a [Tetris](https://en.wikipedia.org/wiki/Tetris) game on a battery-free platform powered by harvested (fluctuating) energy. Without any protection against power failures the game would play until energy is lost (i.e. at line 185) and then would restart from the loading screen. [Intermittent computing techniques](https://drops.dagstuhl.de/opus/volltexte/2017/7131/pdf/LIPIcs-SNAPL-2017-8.pdf) would protect from this unwanted behaviour: after a power failure, line 186 would be executed proceeding from the exact system state as before the power failure. This way a game state will resume at the exact frame where the play ended due to power failure (in other words, [tetromino](https://en.wikipedia.org/wiki/Tetromino) will be in the same place when the the game resumes).
+Powering small embedded computer only with energy harvesting would cause frequent power failures, resulting in a constant restart of a long-running application. Let us look at the above figure which symbolically represents an execution of a [Tetris](https://en.wikipedia.org/wiki/Tetris) game on a battery-free platform powered by harvested (fluctuating) energy. Without any protection against power failures the game would play until energy is lost (i.e. at line 185) and then would restart from the loading screen. [Intermittent computing techniques](https://drops.dagstuhl.de/opus/volltexte/2017/7131/pdf/LIPIcs-SNAPL-2017-8.pdf) would protect from this unwanted behaviour: after a power failure, line 186 would be executed proceeding from the exact system state as before the power failure. This way a game state will resume at the exact frame where the play ended due to power failure (in other words, [tetromino](https://en.wikipedia.org/wiki/Tetromino) will be in the same place when the game resumes).
 
 ### System Design: Game Boy Emulation and System State Checkpointing
 
@@ -59,7 +59,7 @@ Hardware-related sources are stored in the following folders.
  - [/hardware/main-board](https://github.com/TUDSSL/ENGAGE/tree/master/hardware/main-board): Main ENGAGE board [KiCad](https://kicad.org/) files. Specifically, the folder contains `.gbr` Gerber output files for manufacturing, `.drl` drill file for manufacturing, schematics of the PCB in `.pdf` format, `.csv` file with bill of materials and the KiCad project files `.kicad_pcb`, `.pro` and `.sch`.
  - [/hardware/apollo-3-module](https://github.com/TUDSSL/ENGAGE/tree/master/hardware/apollo-3-module): As above, but for the de-attachable board with the MCU and FRAM (see above figure - component (A) and (B))
  
- Enclosure can be printed using your favorite 3D printer or you can send all [/enclosure](https://github.com/TUDSSL/ENGAGE/tree/master/enclosure) files to one of online-avaiable 3D prining services. As for the PCBs, you can either assemble everything yourself or send all [/hardware](https://github.com/TUDSSL/ENGAGE/tree/master/hardware/) files to many online-availabe PCB assembly companies for production. 
+ Enclosure can be printed using your favorite 3D printer or you can send all [/enclosure](https://github.com/TUDSSL/ENGAGE/tree/master/enclosure) files to one of online-available 3D printing services. As for the PCBs, you can either assemble everything yourself or send all [/hardware](https://github.com/TUDSSL/ENGAGE/tree/master/hardware/) files to many online-available PCB assembly companies for production. 
 
 ### Building the Software
 
@@ -90,7 +90,7 @@ $ make install
 
 ```
 
-Then using your favorite debugger (we have used one of [SEGGER J-Link debug probes](https://www.segger.com/products/debug-probes/j-link/models/model-overview/) for this project) the ENGAGE binaries (stored in the [/software/bin](https://github.com/TUDSSL/ENGAGE/tree/master/software/bin) folder) can be uploaded to the MCU using a debugger and whilst powering the platform using USB. The main binary is called `emulator` whilst the others provide a means to reproduce the results obtained in the [paper](#How-to-Cite-This-Work). After this step a [game cartridge can be loaded](#Load-Game-Cartridge).
+Then using your favorite debugger (we have used one of [SEGGER J-Link debug probes](https://www.segger.com/products/debug-probes/j-link/models/model-overview/) for this project) the ENGAGE binaries (stored in the [/software/bin](https://github.com/TUDSSL/ENGAGE/tree/master/software/bin) folder) can be uploaded to the MCU using a debugger whilst powering the platform using USB. The main binary is called `emulator` whilst the others provide a means to reproduce the results obtained in the [paper](#How-to-Cite-This-Work). After this step a [game cartridge can be loaded](#Load-Game-Cartridge).
 
 #### Last Tested Software Versions
 
@@ -107,7 +107,7 @@ There are two important operations when using ENGAGE that are not related to nor
 
 ### Load Game Cartridge
 
-After programming the [emulator binary](https://github.com/TUDSSL/ENGAGE/tree/master/software/bin) to ENGAGE, a Game Boy cartridge with your favorite game needs to be loaded to ENGAGE. To load a cartridge, first put the physical cartridge in the cartridge slot (at the back of ENGAGE) and then hold down **Start** and **A** buttons on ENGAGE while powering ENGAGE through the USB port. You can let go **Start** and **A** buttons after a few seconds. When loading of the cartridge has completed the game will start. Note that there is currently [no progress indication](https://github.com/TUDSSL/ENGAGE/issues/4) of this operation on the screen of ENGAGE. Remember that the process of can take up to five minutes (or more) for large cartridges! After a cartridge has been loaded it can be removed from the device.
+After programming the [emulator binary](https://github.com/TUDSSL/ENGAGE/tree/master/software/bin) to ENGAGE, a Game Boy cartridge with your favorite game needs to be loaded to ENGAGE. To load a cartridge, first put the physical cartridge in the cartridge slot (at the back of ENGAGE) and then hold down **Start** and **A** buttons on ENGAGE while powering ENGAGE through the USB port. You can let go **Start** and **A** buttons after a few seconds. When loading of the cartridge has completed the game will start. Note that there is currently [no progress indication](https://github.com/TUDSSL/ENGAGE/issues/4) of this operation on the screen of ENGAGE. Remember that the process can take five minutes (or more) for large cartridges! After a cartridge has been loaded it can be removed from the device.
 
 ### System Reset
 
@@ -117,7 +117,7 @@ Due to the unique nature of ENGAGE's state resuming after power failure, resetti
 
 - **When the energy source is changed from solar to button-mashing, how long is ENGAGE temporarily off?**
 
-We actually harvest from both energy sources at the same time! We developed a circuit that manages this internally. However, this still means that the user will experience interuptions of play, that can vary between sub-second (in extreme well outdoor light conditions) to many seconds (on a gloomy day, indoors). While the button pressess generate extra energy to sustain game play, most of the energy is still generated dby solar panels. More discussion on this can be found in our [research paper](#How-to-Cite-This-Work). 
+We actually harvest from both energy sources at the same time! We developed a circuit that manages this internally. However, this still means that the user will experience interuptions of play, that can vary between sub-second (in extreme well outdoor light conditions) to many seconds (on a gloomy day, indoors). While the button pressess generate extra energy to sustain game play, most of the energy is still generated by solar panels. More discussion on this can be found in our [research paper](#How-to-Cite-This-Work). 
 
 - **How do the buttons generate power?**
 
@@ -129,11 +129,11 @@ Yes, the screen is smaller that in the original Game Boy (which is a [source of 
 
 - **Can ENGAGE play sound?**
 
-Unfortunately not. Sound generation costs extra energy and as we operate om a very thin energy budget we had to make choices which features of original Game Boy had to be excluded from ENGAGE.
+Unfortunately not. Sound generation costs extra energy and as we operate on a very thin energy budget we had to make choices which features of original Game Boy had to be excluded from ENGAGE.
 
 - **Can I buy one?**
 
-Unfortunately not. But you can build one! All hardware and software of ENGAGE, together with the process of how to make it run is simply in _this repository_. Please remember that ENGAGE **was (and is not meant to be) a product we can sell**. This is a research project and a concept demonstration.
+Unfortunately not. But you can build one! All hardware and software of ENGAGE, together with the process of how to make it run is simply in _this repository_. Please remember that ENGAGE **was not (and is not meant to be) a product we can sell**. This is a research project and a concept demonstration.
 
 ## How to Contribute to this Project
 
@@ -180,7 +180,7 @@ To cite this publication please use the following BiBTeX entry.
 
 ## The Press
 
-The project has been covered extensively by international media. Here is the list of example posts and articiles (as of October 30, 2020).
+The project has been covered extensively by international media. Here is the list of example posts and articles (as of October 30, 2020).
 
 [CNET](https://www.cnet.com/features/the-first-battery-free-game-boy-wants-to-power-a-gaming-revolution/), [The Wall Street Journal](https://www.wsj.com/articles/battery-free-energy-harvesting-perpetual-machines-the-weird-future-of-computing-11601697600?st=xyjz99iomamhwr6&reflink=article_copyURL_share), [Mashable](https://mashable.com/video/battery-free-gameboy/), [Hackaday](https://hackaday.com/2020/09/11/game-boy-plays-forever/), [The Verge](https://www.theverge.com/tldr/2020/9/4/21422605/engage-battery-free-game-boy-button-mashing-solar-panels-research-environmental-sustainability), [Gizmodo](https://earther.gizmodo.com/this-battery-free-game-boy-is-the-first-step-toward-ens-1844953062), [Engadget](https://www.engadget.com/engage-game-boy-211023869.html), [PCMag](https://www.pcmag.com/news/solar-powered-game-boy-provides-infinite-play), [The Register](https://www.theregister.com/2020/09/04/battery_free_gameboy/), [Tech Times](https://www.techtimes.com/articles/252268/20200903/game-boy-gaming-console-battery-free-play-want-without-recharging.htm), [Nintendo Life](https://www.nintendolife.com/news/2020/09/this_battery-free_game_boy_could_be_the_future_of_portable_tech), [Daily Mail](https://www.dailymail.co.uk/sciencetech/article-8695791/Battery-free-Game-Boy-charged-MILLIONS-times-sun-pressing-buttons.html), [The Independent](https://www.independent.co.uk/life-style/gadgets-and-tech/news/game-boy-battery-free-technology-renewable-power-a9705256.html), [r/gadgets](https://www.reddit.com/r/gadgets/comments/in3aco/batteryfree_game_boy_runs_off_of_solar_and/)
 
