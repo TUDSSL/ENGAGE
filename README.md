@@ -125,7 +125,7 @@ The buttons generate power by moving a small but powerful magnet inside a tightl
 
 - **Why is the screen so small?**
 
-Yes, the screen is smaller that in the original Game Boy (which is a [source of complaints](https://www.reddit.com/r/gadgets/comments/in3aco/batteryfree_game_boy_runs_off_of_solar_and/) of many internals), but the one we [used in the initial ENGAGE design](https://www.j-display.com/product/pdf/Datasheet/4LPM013M126A_specification_Ver02.pdf) the best one we could find in terms of resolution and energy consumption. If you have a better screen to suggest, then make a new [project issue](#How-to-Contribute-to-this-Project) and send us a [pull request](#How-to-Contribute-to-this-Project).
+Yes, the screen is smaller that in the original Game Boy (which is a [source of complaints](https://www.reddit.com/r/gadgets/comments/in3aco/batteryfree_game_boy_runs_off_of_solar_and/) of many internauts), but the one we [used in the initial ENGAGE design](https://www.j-display.com/product/pdf/Datasheet/4LPM013M126A_specification_Ver02.pdf) the best one we could find in terms of resolution and energy consumption. If you have a better screen to suggest, then make a new [project issue](#How-to-Contribute-to-this-Project) and send us a [pull request](#How-to-Contribute-to-this-Project).
 
 - **Can ENGAGE play sound?**
 
