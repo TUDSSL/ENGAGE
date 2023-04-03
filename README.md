@@ -18,10 +18,10 @@ Powering small embedded computer only with energy harvesting would cause frequen
 
 <img src="https://github.com/TUDSSL/ENGAGE/blob/master/doc-images/system-engage.png" width="800px">
 
-We designed a Ninetendo Game Boy emulator, which we call _Energy Aware Gaming (ENGAGE)_ platform, as a proof of concept that interactive systems powered by only by (intermittently-available) energy harvesting is possible. ENGAGE is build around four key components (see also figure above):
+We designed a Nintendo Game Boy emulator, which we call _Energy Aware Gaming (ENGAGE)_ platform, as a proof of concept that interactive systems powered by only by (intermittently-available) energy harvesting is possible. ENGAGE is build around four key components (see also figure above):
 
 1. **Game emulation:** Use processor emulation to play (Game Boy) retro games to resemble classic [Game Boy](https://en.wikipedia.org/wiki/Game_Boy) platform feel;
-1. **Kernel:** Efficienly checkpoint minimal game state to the dedicated non-volatile memory to protect from a restart after a power failure, enabling continous game play;
+1. **Kernel:** Efficiently checkpoint minimal game state to the dedicated non-volatile memory to protect from a restart after a power failure, enabling continuous game play;
 1. **Energy:** Power battery-free gaming console from gaming actions (button presses) and from ambient solar energy and store this energy in a small capacitor;
 1. **Hardware:** Exploit leading (but off-the-shelf and accessible to everyone) [low-power 32-bit ARM Cortex M4 microcontroller](https://ambiq.com/apollo3-blue/) and [external FRAM](https://www.fujitsu.com/global/documents/products/devices/semiconductor/fram/lineup/MB85RS4MT-DS501-00053-1v0-E.pdf) to support checkpointing system.
 
@@ -45,7 +45,7 @@ The specific internals of ENGAGE are as follows.
 
 ### Checkpointing
 
-The core software component of ENGAGE is differential checkpointing libary called _MPatch_ located in [software/libs/mpatch](https://github.com/TUDSSL/ENGAGE/blob/master/software/libs/mpatch) folder of this repository. Further description of MPatch is provided in a separate [document](https://github.com/TUDSSL/ENGAGE/blob/master/software/libs/mpatch/README.md).
+The core software component of ENGAGE is differential checkpointing library called _MPatch_ located in [software/libs/mpatch](https://github.com/TUDSSL/ENGAGE/blob/master/software/libs/mpatch) folder of this repository. Further description of MPatch is provided in a separate [document](https://github.com/TUDSSL/ENGAGE/blob/master/software/libs/mpatch/README.md).
 
 ## Getting Started
 
@@ -65,7 +65,7 @@ Hardware-related sources are stored in the following folders.
 
 Software-related sources are stored in the following folders.
 
-- [/software/apps](https://github.com/TUDSSL/ENGAGE/tree/master/software/apps): Applications' source code folder containg three applications:
+- [/software/apps](https://github.com/TUDSSL/ENGAGE/tree/master/software/apps): Applications' source code folder containing three applications:
     - [emulator](https://github.com/TUDSSL/ENGAGE/tree/master/software/apps/emulator): main application of ENGAGE emulator, which can be also used to reproduce [results of the paper](#How-to-Cite-This-Work);
     - [checkpoint](https://github.com/TUDSSL/ENGAGE/tree/master/software/apps/checkpoint): application to test the performance of checkpointing mechanism;
     - [memtracker](https://github.com/TUDSSL/ENGAGE/tree/master/software/apps/memtracker): application to test the performance of memory use tracking mechanism;
@@ -111,13 +111,13 @@ After programming the [emulator binary](https://github.com/TUDSSL/ENGAGE/tree/ma
 
 ### System Reset
 
-Due to the unique nature of ENGAGE's state resuming after power failure, resetting ENGAGE requires a unique key combination (unlike the original Game Boy that you could turn off and on again easilly). This reset is performed by holding **Start** and **Select** buttons while powering ENGAGE through an USB port. Please note that this reset operation does *not* require you to reload the game cartridge.
+Due to the unique nature of ENGAGE's state resuming after power failure, resetting ENGAGE requires a unique key combination (unlike the original Game Boy that you could turn off and on again easily). This reset is performed by holding **Start** and **Select** buttons while powering ENGAGE through an USB port. Please note that this reset operation does *not* require you to reload the game cartridge.
 
 ## Frequently Asked Questions
 
 - **When the energy source is changed from solar to button-mashing, how long is ENGAGE temporarily off?**
 
-We actually harvest from both energy sources at the same time! We developed a circuit that manages this internally. However, this still means that the user will experience interuptions of play, that can vary between sub-second (in extreme well outdoor light conditions) to many seconds (on a gloomy day, indoors). While the button pressess generate extra energy to sustain game play, most of the energy is still generated by solar panels. More discussion on this can be found in our [research paper](#How-to-Cite-This-Work). 
+We actually harvest from both energy sources at the same time! We developed a circuit that manages this internally. However, this still means that the user will experience interruptions of play, that can vary between sub-second (in extreme well outdoor light conditions) to many seconds (on a gloomy day, indoors). While the button presses generate extra energy to sustain game play, most of the energy is still generated by solar panels. More discussion on this can be found in our [research paper](#How-to-Cite-This-Work). 
 
 - **How do the buttons generate power?**
 
@@ -125,7 +125,7 @@ The buttons generate power by moving a small but powerful magnet inside a tightl
 
 - **Why is the screen so small?**
 
-Yes, the screen is smaller that in the original Game Boy (which is a [source of complain](https://www.reddit.com/r/gadgets/comments/in3aco/batteryfree_game_boy_runs_off_of_solar_and/) of many internauts), but the one we [used in the initial ENGAGE design](https://www.j-display.com/product/pdf/Datasheet/4LPM013M126A_specification_Ver02.pdf) the best one we could find in terms of resolution and energy consumption. If you have a better screen to suggest, then make a new [project issue](#How-to-Contribute-to-this-Project) and send us a [pull request](#How-to-Contribute-to-this-Project).
+Yes, the screen is smaller that in the original Game Boy (which is a [source of complaints](https://www.reddit.com/r/gadgets/comments/in3aco/batteryfree_game_boy_runs_off_of_solar_and/) of many internauts), but the one we [used in the initial ENGAGE design](https://www.j-display.com/product/pdf/Datasheet/4LPM013M126A_specification_Ver02.pdf) the best one we could find in terms of resolution and energy consumption. If you have a better screen to suggest, then make a new [project issue](#How-to-Contribute-to-this-Project) and send us a [pull request](#How-to-Contribute-to-this-Project).
 
 - **Can ENGAGE play sound?**
 
@@ -196,4 +196,4 @@ This research project was supported by [Netherlands Organisation for Scientific 
 
 Copyright (C) 2020 TU Delft Embedded and Networked Systems Group/Sustainable Systems Laboratory.
 
-MIT Licence or otherwise specified. See [license](https://github.com/TUDSSL/ENGAGE/blob/master/LICENSE) file for details.
+MIT License or otherwise specified. See [license](https://github.com/TUDSSL/ENGAGE/blob/master/LICENSE) file for details.
